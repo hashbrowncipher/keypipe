@@ -8,24 +8,14 @@
 #include <unistd.h>
 
 #define KEYSIZE 32
-#define BUFSIZE 1024 * 1024
+
+#define SEQ_OFFSET 0
+#define SIZE_OFFSET 4
+#define MESSAGE_OFFSET 8
+#define MESSAGE_SIZE (1024 * 1024)
+#define BUFSIZE (MESSAGE_SIZE + MESSAGE_OFFSET)
 
 #define handle_error(message) { perror((message)); exit(EXIT_FAILURE); }
-
-// Needs to compile without padding
-struct block_header {
-	uint32_t seq;
-	uint32_t size;
-	unsigned char mac[32];
-};
-
-inline void fread_one(void *ptr, size_t size, FILE * stream, char* message) {
-	int ret = fread(ptr, size, 1, stream);
-	if(ret != 1) {
-		fprintf(stderr, "%s\n", message);
-		exit(2);
-	}
-}
 
 int do_usage(char* name) {
 	fprintf(stderr, "Usage: %s <keyfile>\n", name);
@@ -34,28 +24,39 @@ int do_usage(char* name) {
 
 int do_verify(void* key[KEYSIZE]) {
 	unsigned char md[KEYSIZE];
+
+	unsigned char block_mac[KEYSIZE];
 	void* buf = malloc(BUFSIZE);
+	uint32_t* block_seq = buf;
+	uint32_t* block_size = buf + SIZE_OFFSET;
+	void* message = buf + MESSAGE_OFFSET;
 
 	int ret;
-	struct block_header header;
 
-	for(int seq = 0;; seq++) {
-		ret = fread(&header, sizeof(struct block_header), 1, stdin);
+	for(uint32_t seq = 0;; seq++) {
+		ret = fread(&block_mac, sizeof(block_mac), 1, stdin);
+		if(ret != 1) {
+			fprintf(stderr, "Failed reading block MAC of block %d\n", seq);
+			exit(4);
+		}
+
+		ret = fread(buf, MESSAGE_OFFSET, 1, stdin);
 		if(ret != 1) {
 			fprintf(stderr, "Failed reading block header of block %d\n", seq);
 			exit(4);
 		}
-		if(header.size > BUFSIZE) {
+
+		if(*block_seq != seq) {
+			fprintf(stderr, "Invalid sequence number in block %d: got %d\n", seq, *block_seq);
+			exit(4);
+		}
+
+		if(*block_size > MESSAGE_SIZE) {
 			fprintf(stderr, "Header for block %d specifies illegal size\n", seq);
 			exit(4);
 		}
 
-		if(header.seq != seq) {
-			fprintf(stderr, "Invalid sequence number in block %d: got %d\n", seq, header.seq);
-			exit(4);
-		}
-
-		if(header.size == 0) {
+		if(*block_size == 0) {
 			ret = getchar();
 			if(feof(stdin)) {
 				break;
@@ -65,23 +66,19 @@ int do_verify(void* key[KEYSIZE]) {
 			exit(4);
 		}
 
-		ret = fread(buf, header.size, 1, stdin);
+		ret = fread(message, *block_size, 1, stdin);
 		if(ret != 1) {
-			if(header.size == 0 && feof(stdin)) {
-				break;
-			}
-
-			fprintf(stderr, "Failed reading %d bytes from block %d\n", header.size, seq);
+			fprintf(stderr, "Failed reading %d bytes from block %d\n", *block_size, seq);
 			exit(4);
 		}
 
-		HMAC(EVP_sha256(), key, KEYSIZE, buf, header.size, md, NULL);
-		if(CRYPTO_memcmp(md, header.mac, KEYSIZE) != 0) {
+		HMAC(EVP_sha256(), key, KEYSIZE, buf, *block_size + MESSAGE_OFFSET, md, NULL);
+		if(CRYPTO_memcmp(md, block_mac, KEYSIZE) != 0) {
 			fprintf(stderr, "MAC mismatch in block %d\n", seq);
 			exit(4);
 		}
 
-		ret = write(STDOUT_FILENO, buf, header.size);
+		ret = write(STDOUT_FILENO, message, *block_size);
 	}
 
 	free(buf);
@@ -89,24 +86,31 @@ int do_verify(void* key[KEYSIZE]) {
 
 int do_sign(void* key[KEYSIZE]) {
 	unsigned char md[KEYSIZE];
-	void* message = malloc(BUFSIZE);
-	uint32_t block_size;
-	uint32_t seq = 0;
+
+	void* buffer = malloc(BUFSIZE);
+	uint32_t* seq = buffer;
+	uint32_t* block_size = buffer + SIZE_OFFSET;
+	void* message = buffer + MESSAGE_OFFSET;
+	
+	*seq = 0;
+
+	const EVP_MD* evp = EVP_sha256();
 
 	do {
-		block_size = read(STDIN_FILENO, message, BUFSIZE);
-		if(block_size < 0) {
+		*block_size = read(STDIN_FILENO, message, MESSAGE_SIZE);
+		if(*block_size < 0) {
 			handle_error("Error reading input");
 		}
-		HMAC(EVP_sha256(), key, KEYSIZE, message, block_size, md, NULL);
+		uint32_t output_size = *block_size + MESSAGE_OFFSET;
+		HMAC(evp, key, KEYSIZE, buffer, output_size, md, NULL);
 		int ret;
-		ret = write(STDOUT_FILENO, &seq, sizeof(seq));
-		ret = write(STDOUT_FILENO, &block_size, sizeof(block_size));
-		ret = write(STDOUT_FILENO, md, 32);
-		ret = write(STDOUT_FILENO, message, block_size);
+		ret = fwrite(md, sizeof(md), 1, stdout);
+		ret = fwrite(buffer, output_size, 1, stdout);
+		fflush(stdout);
+		(*seq)++;
+	} while(*block_size != 0);
 
-		seq++;
-	} while(block_size != 0);
+	free(buffer);
 }
 
 int main(int argc, char* argv[]) {
