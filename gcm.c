@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <openssl/evp.h>
+#include <openssl/err.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +20,7 @@
 #define KEYSIZE 16
 
 #define handle_error(message) { perror((message)); exit(EXIT_FAILURE); }
+#define handle_openssl_error() { ERR_print_errors_fp(stderr); exit(8); }
 
 
 int do_decrypt(unsigned char key[KEYSIZE]) {
@@ -30,9 +32,14 @@ int do_decrypt(unsigned char key[KEYSIZE]) {
 
 	int rc;
 
+	EVP_CIPHER_CTX ctx;
+	EVP_CIPHER_CTX_init(&ctx);
+	rc = EVP_DecryptInit_ex(&ctx, EVP_aes_128_gcm(), NULL, key, NULL);
+	if(rc != 1) {
+		fprintf(stderr, "Failed to initialize decryption\n");
+		handle_openssl_error();
+	}
 
-
-	EVP_CIPHER_CTX *ctx = NULL;
 	uint32_t clen;
 	uint64_t counter = 0;
 	do {
@@ -62,35 +69,43 @@ int do_decrypt(unsigned char key[KEYSIZE]) {
 			}
 		}
 
-		ctx = EVP_CIPHER_CTX_new();
-		rc = EVP_DecryptInit_ex(ctx, EVP_aes_128_gcm(), NULL, NULL, NULL);
-
 		uint64_t counter_n = htobe64(counter);
 		memcpy(iv + 4, &counter_n, 8);
 
-		rc = EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv);
+		rc = EVP_DecryptInit_ex(&ctx, NULL, NULL, NULL, iv);
+		if(rc != 1) {
+			fprintf(stderr, "Failed to set IV for block %lu\n", counter);
+			handle_openssl_error();
+		}
 
 		int plen;
-		rc = EVP_DecryptUpdate(ctx, plaintext, &plen, ciphertext, (int) clen);
+		rc = EVP_DecryptUpdate(&ctx, plaintext, &plen, ciphertext, (int) clen);
+		if(rc != 1) {
+			/* How the hell would this ever happen? */
+			fprintf(stderr, "Failed to decrypt block %lu\n", counter);
+			handle_openssl_error();
+		}
 
-		rc = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, sizeof(tag), tag);
+		rc = EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_SET_TAG, sizeof(tag), tag);
+		if(rc != 1) {
+			fprintf(stderr, "Failed to set GCM tag in block %lu\n", counter);
+			handle_openssl_error();
+		}
 
 		void * unused_buf = {0};
 		int32_t unused_len;
-		rc = EVP_DecryptFinal_ex(ctx, unused_buf, &unused_len);
-
-                EVP_CIPHER_CTX_free(ctx);
-
-                if(rc > 0) {
+		rc = EVP_DecryptFinal_ex(&ctx, unused_buf, &unused_len);
+                if(rc == 1) {
                         write(STDOUT_FILENO, plaintext, plen);
                 } else {
                         fprintf(stderr, "Read corrupted block %lu\n", counter);
-                        exit(4);
+			handle_openssl_error();
                 }
 
 		counter++;
-
 	} while(clen != 0);
+
+	EVP_CIPHER_CTX_cleanup(&ctx);
 
 	return 0;
 }
@@ -102,7 +117,16 @@ int do_encrypt(unsigned char key[KEYSIZE]) {
 	void * plaintext = malloc(MESSAGE_SIZE);
 	void * ciphertext = malloc(MESSAGE_SIZE);
 
-	EVP_CIPHER_CTX *ctx = NULL;
+	int rc;
+
+	EVP_CIPHER_CTX ctx;
+	EVP_CIPHER_CTX_init(&ctx);
+
+	rc = EVP_EncryptInit_ex(&ctx, EVP_aes_128_gcm(), NULL, key, NULL);
+	if(rc != 1) {
+		fprintf(stderr, "Failed to initialize encryption\n");
+		handle_openssl_error();
+	}
 
 	int32_t plen;
 	uint64_t counter = 0;
@@ -115,24 +139,34 @@ int do_encrypt(unsigned char key[KEYSIZE]) {
 		uint64_t counter_n = htobe64(counter);
 		memcpy(iv + 4, &counter_n, 8);
 
-		ctx = EVP_CIPHER_CTX_new();
-		int rc;
-		rc = EVP_EncryptInit_ex(ctx, EVP_aes_128_gcm(), NULL, NULL, NULL);
+
+		rc = EVP_EncryptInit_ex(&ctx, NULL, NULL, NULL, iv);
 		if(rc != 1) {
-			//TODO: error handling
+			fprintf(stderr, "Failed to set IV for block %lu\n", counter);
+			handle_openssl_error();
 		}
 
-		rc = EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv);
-
 		int clen;
-		rc = EVP_EncryptUpdate(ctx, ciphertext, &clen, plaintext, plen);
+		rc = EVP_EncryptUpdate(&ctx, ciphertext, &clen, plaintext, plen);
+		if(rc != 1) {
+			fprintf(stderr, "Failed to encrypt in block %lu\n", counter);
+			handle_openssl_error();
+		}
 
 		void * unused_buf = {0};
 		int32_t unused_len;
-		rc = EVP_EncryptFinal_ex(ctx, unused_buf, &unused_len);
+		rc = EVP_EncryptFinal_ex(&ctx, unused_buf, &unused_len);
+		if(rc != 1) {
+			fprintf(stderr, "Failed to finalize for block %lu\n", counter);
+			handle_openssl_error();
+		}
 
-		rc = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, sizeof(tag), tag);
-		EVP_CIPHER_CTX_free(ctx);
+
+		rc = EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_GET_TAG, sizeof(tag), tag);
+		if(rc != 1) {
+			fprintf(stderr, "Failed to get EVP tag for block %lu\n", counter);
+			handle_openssl_error();
+		}
 
 		int plen_n = htonl(plen);
 
@@ -143,14 +177,19 @@ int do_encrypt(unsigned char key[KEYSIZE]) {
 		counter++;
 	} while(plen != 0);
 
+	EVP_CIPHER_CTX_cleanup(&ctx);
 	free(plaintext);
 	free(ciphertext);
 
 	return 0;
 }
 
-void usage(int argc, char* argv[]) {
+void do_usage(int argc, char* argv[]) {
 	fprintf(stderr, "Usage: %s [-d] <keyfile>\n", argv[0]);
+	fprintf(stderr, "\n");
+	fprintf(stderr, "Always check the return code!\n");
+	fprintf(stderr, "Nonzero means corrupted or partial data.\n");
+	exit(1);
 }
 
 int main(int argc, char* argv[]) {
@@ -161,12 +200,14 @@ int main(int argc, char* argv[]) {
 		case 'd':
 			decrypt_flag = 1;
 			break;
+		default:
+			do_usage(argc, argv);
+			break;
 		}
 	}
 
 	if((argc - optind) < 1) {
-		usage(argc, argv);
-		exit(1);
+		do_usage(argc, argv);
 	}
 
 	FILE * keyfile = fopen(argv[optind], "r");
