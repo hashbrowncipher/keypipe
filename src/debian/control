@@ -1,0 +1,9 @@
+Source: gcmpipe
+Maintainer: Josh Snyder <josh@code406.com>
+Build-Depends: libssl-dev
+
+Package: gcmpipe
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: a tool for running commands within pid namespaces
+

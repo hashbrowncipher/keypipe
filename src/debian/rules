@@ -1,0 +1,26 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+build:
+	make
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_prep
+	dh_installdirs
+
+	make install DESTDIR=$(CURDIR)/debian/pid-ns
+
+binary: binary-arch binary-indep
+
+binary-arch: install
+	dh_testdir
+	dh_testroot
+	dh_strip
+	dh_fixperms
+	chown root.root debian/pid-ns/usr/bin/pid-ns
+	chmod 4755 debian/pid-ns/usr/bin/pid-ns
+
