@@ -95,12 +95,12 @@ int do_decrypt(unsigned char key[KEYSIZE]) {
 		void * unused_buf = {0};
 		int32_t unused_len;
 		rc = EVP_DecryptFinal_ex(&ctx, unused_buf, &unused_len);
-                if(rc == 1) {
-                        write(STDOUT_FILENO, plaintext, plen);
-                } else {
-                        fprintf(stderr, "Read corrupted block %lu\n", counter);
+		if(rc == 1) {
+			rc = write(STDOUT_FILENO, plaintext, plen);
+		} else {
+			fprintf(stderr, "Read corrupted block %lu\n", counter);
 			handle_openssl_error();
-                }
+		}
 
 		counter++;
 	} while(clen != 0);
