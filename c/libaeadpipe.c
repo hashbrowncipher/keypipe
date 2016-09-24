@@ -27,7 +27,7 @@
 
 #define ERROR(x) { ret = x; goto out; }
 
-const char* aeadpipe_errorstrings[] = {
+const char* aeadpipe_errorstrings[6] = {
     "OK",
     "Input data was corrupt",
     "Unable to allocate memory",

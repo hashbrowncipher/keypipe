@@ -6,7 +6,7 @@ import os
 from cffi import FFI
 
 from ._lib import ffi
-lib = ffi.dlopen(join(dirname(__file__), 'libaeadpipe.so'))
+lib = ffi.dlopen(join(dirname(__file__), '_libaeadpipe.so'))
 
 class AEADError(RuntimeError):
     def __init__(self, code):

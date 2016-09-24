@@ -9,7 +9,7 @@ typedef enum {
     OUTPUT_ERROR,
 } aeadpipe_error;
 
-const char* aeadpipe_errorstrings[];
+const char* aeadpipe_errorstrings[6];
 
 struct gcm_context;
 size_t gcm_context_size(void);
