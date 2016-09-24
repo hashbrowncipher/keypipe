@@ -1,5 +1,10 @@
+#ifndef _BSD_SOURCE
 #define _BSD_SOURCE
+#endif
+
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include <arpa/inet.h>
 #include <endian.h>
@@ -22,11 +27,14 @@
 
 #define ERROR(x) { ret = x; goto out; }
 
-#define NO_MEMORY     1
-#define OPENSSL_WEIRD 2
-#define INPUT_ERROR   3
-#define CORRUPT_DATA  4
-#define OUTPUT_ERROR  5
+const char* aeadpipe_errorstrings[] = {
+    "OK",
+    "Input data was corrupt",
+    "Unable to allocate memory",
+    "OpenSSL returned an unexpected error",
+    "Unable to read input data",
+    "Unable to write output data",
+};
 
 struct gcm_context {
 	uint64_t offset;
@@ -40,11 +48,11 @@ void init_gcm_context(struct gcm_context* ctx) {
 	ctx->offset = 0;
 }
 
-int aeadpipe_decrypt(unsigned char key[KEYSIZE], FILE *in, FILE *out) {
+aeadpipe_error aeadpipe_decrypt(unsigned char key[KEYSIZE], FILE *in, FILE *out) {
 	unsigned char iv[12] = {0};
 	char tag[16];
 
-	int ret = 0;
+	int ret = CORRUPT_DATA;
 	uint64_t counter = 0;
 
 	void * buffer = malloc(2 * MESSAGE_SIZE);
@@ -63,19 +71,19 @@ int aeadpipe_decrypt(unsigned char key[KEYSIZE], FILE *in, FILE *out) {
 		ERROR(OPENSSL_WEIRD)
 	}
 
-	err = fread(&counter, sizeof(counter), 1, stdin);
+	err = fread(&counter, sizeof(counter), 1, in);
 	if(err != 1) {
 		ERROR(INPUT_ERROR);
 	}
 
 	uint32_t clen;
 	do {
-		err = fread(tag, sizeof(tag), 1, stdin);
+		err = fread(tag, sizeof(tag), 1, in);
 		if(err != 1) {
 			ERROR(INPUT_ERROR);
 		}
 
-		err = fread(&clen, sizeof(clen), 1, stdin);
+		err = fread(&clen, sizeof(clen), 1, in);
 		if(err != 1) {
 			ERROR(INPUT_ERROR);
 		}
@@ -86,7 +94,7 @@ int aeadpipe_decrypt(unsigned char key[KEYSIZE], FILE *in, FILE *out) {
 		}
 
 		if(clen != 0) {
-			err = fread(ciphertext, clen, 1, stdin);
+			err = fread(ciphertext, clen, 1, in);
 			if(err != 1) {
 				ERROR(INPUT_ERROR);
 			}
@@ -122,6 +130,7 @@ int aeadpipe_decrypt(unsigned char key[KEYSIZE], FILE *in, FILE *out) {
 		counter++;
 
 		if(plen == 0) {
+			ret = OK;
 			break;
 		}
 
@@ -138,11 +147,11 @@ out:
 	return ret;
 }
 
-int aeadpipe_encrypt(unsigned char key[KEYSIZE], struct gcm_context * aead_ctx, FILE *in, FILE *out) {
+aeadpipe_error aeadpipe_encrypt(unsigned char key[KEYSIZE], struct gcm_context * aead_ctx, FILE *in, FILE *out) {
 	unsigned char iv[12] = {0};
 	char tag[16];
 
-	int ret = 0;
+	int ret = CORRUPT_DATA;
 	uint64_t counter = aead_ctx->offset;
 
 	void * buffer = malloc(2 * MESSAGE_SIZE);
@@ -162,16 +171,17 @@ int aeadpipe_encrypt(unsigned char key[KEYSIZE], struct gcm_context * aead_ctx, 
 		ERROR(2)
 	}
 
-	fwrite(&counter, sizeof(counter), 1, out);
+	uint64_t counter_n = htobe64(counter);
+	fwrite(&counter_n, sizeof(counter_n), 1, out);
 
 	int32_t plen;
-	do {
+	while(true) {
 		plen = fread(plaintext, 1, MESSAGE_SIZE, in);
 		if(plen < 0) {
 			ERROR(INPUT_ERROR);
 		}
 
-		uint64_t counter_n = htobe64(counter);
+		counter_n = htobe64(counter);
 		memcpy(iv + 4, &counter_n, 8);
 
 		err = EVP_EncryptInit_ex(&ctx, NULL, NULL, NULL, iv);
@@ -202,22 +212,31 @@ int aeadpipe_encrypt(unsigned char key[KEYSIZE], struct gcm_context * aead_ctx, 
 		counter++;
 		err = fwrite(tag, sizeof(tag), 1, out);
 		if(err != 1) {
+			fprintf(stderr, "%d\n", err);
 			ERROR(OUTPUT_ERROR);
 		}
 
 		err = fwrite(&plen_n, sizeof(plen), 1, out);
 		if(err != 1) {
+			fprintf(stderr, "%d\n", err);
 			ERROR(OUTPUT_ERROR);
+		}
+
+		if(plen == 0) {
+			ret = OK;
+			break;
 		}
 
 		err = fwrite(ciphertext, plen, 1, out);
 		if(err != 1) {
 			ERROR(OUTPUT_ERROR);
 		}
-	} while(plen != 0);
+	}
 
 out:
 	EVP_CIPHER_CTX_cleanup(&ctx);
 	aead_ctx->offset = counter;
 	free(buffer);
+
+	return ret;
 }
