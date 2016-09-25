@@ -34,19 +34,22 @@ typedef enum {
 	OPENSSL_WEIRD,
 	INPUT_ERROR,
 	OUTPUT_ERROR,
+	CONCURRENCY_ERROR,
 } aepipe_error;
 
-const char* aepipe_errorstrings[6] = {
+const char* aepipe_errorstrings[7] = {
 	"OK",
 	"Input data was corrupt",
 	"Unable to allocate memory",
 	"OpenSSL returned an unexpected error",
 	"Unable to read input data",
 	"Unable to write output data",
+	"Improper concurrent access of an aepipe context",
 };
 
 struct aepipe_context {
 	uint64_t offset;
+	bool flag;
 };
 
 size_t aepipe_context_size() {
@@ -55,6 +58,7 @@ size_t aepipe_context_size() {
 
 void aepipe_init_context(struct aepipe_context* ctx) {
 	ctx->offset = 0;
+	__sync_lock_release(&ctx->flag);
 }
 
 struct block_state {
@@ -73,7 +77,7 @@ struct iv_numeric {
 #define HEADER_SIZE (sizeof(uint32_t) + sizeof(unsigned char[16]))
 #define CHECK(err, x, y)  { if(x != y) { ERROR(err); } }
 
-int aepipe_decrypt(unsigned char key[KEYSIZE], FILE* in, FILE* out) {
+int aepipe_unseal(unsigned char key[KEYSIZE], FILE* in, FILE* out) {
 	struct iv_numeric iv;
 	iv.unused = 0;
 
@@ -139,11 +143,14 @@ out:
 }
 
 
-int aepipe_encrypt(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, FILE *in, FILE *out) {
+int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, FILE *in, FILE *out) {
+	if(__sync_lock_test_and_set(&aepipe_ctx->flag, true)) {
+		return CONCURRENCY_ERROR;
+	}
+	int ret = CORRUPT_DATA;
 	struct iv_numeric iv;
 	iv.unused = 0;
 
-	int ret = CORRUPT_DATA;
 	uint64_t counter = aepipe_ctx->offset;
 
     struct block_state * s = malloc(sizeof(struct block_state));
@@ -197,6 +204,6 @@ out:
 	EVP_CIPHER_CTX_cleanup(&ctx);
 	aepipe_ctx->offset = counter;
 	free(s);
-
+	__sync_lock_release(&aepipe_ctx->flag);
 	return ret;
 }

@@ -69,11 +69,11 @@ int main(int argc, char* argv[]) {
 
 	int ret;
 	if(decrypt_flag) {
-		ret = aepipe_decrypt(key, stdin, stdout);
+		ret = aepipe_unseal(key, stdin, stdout);
 	} else {
 		struct aepipe_context * ctx = alloca(aepipe_context_size());
 		aepipe_init_context(ctx);
-		ret = aepipe_encrypt(key, ctx, stdin, stdout);
+		ret = aepipe_seal(key, ctx, stdin, stdout);
 	}
 	if(ret) {
 		fprintf(stderr, "%s\n", aepipe_errorstrings[ret]);
