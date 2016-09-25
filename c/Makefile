@@ -1,9 +1,10 @@
 CFLAGS=-fPIC -O2 -g -Wall
 .PHONY = all
 
-all: libaeadpipe.so aeadpipe
+all: libaepipe.so aepipe
 
-libaeadpipe.so: libaeadpipe.o
+libaepipe.so: libaepipe.o
 	$(CC) -shared $^ -lcrypto -o $@
 
-aeadpipe: aeadpipe.c libaeadpipe.so
+aepipe: aepipe.c libaepipe.so
+	gcc $^ -Wl,-rpath,. -o $@

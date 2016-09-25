@@ -18,7 +18,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "libaeadpipe.h"
+#include "libaepipe.h"
 
 //If you make this larger than 2^36 bytes, you will break GCM.
 //You'll also be using a shit-ton of memory.
@@ -27,7 +27,16 @@
 
 #define ERROR(x) { ret = x; goto out; }
 
-const char* aeadpipe_errorstrings[6] = {
+static typedef enum {
+    OK,
+    CORRUPT_DATA,
+    NO_MEMORY,
+    OPENSSL_WEIRD,
+    INPUT_ERROR,
+    OUTPUT_ERROR,
+} aepipe_error;
+
+const char* aepipe_errorstrings[6] = {
     "OK",
     "Input data was corrupt",
     "Unable to allocate memory",
@@ -36,21 +45,25 @@ const char* aeadpipe_errorstrings[6] = {
     "Unable to write output data",
 };
 
-struct gcm_context {
+struct aepipe_context {
 	uint64_t offset;
 };
 
-size_t gcm_context_size(void) {
-	return sizeof(struct gcm_context);
+size_t aepipe_context_size() {
+	return sizeof(struct aepipe_context);
 }
 
-void init_gcm_context(struct gcm_context* ctx) {
+void init_gcm_context(struct aepipe_context* ctx) {
 	ctx->offset = 0;
 }
 
-aeadpipe_error aeadpipe_decrypt(unsigned char key[KEYSIZE], FILE *in, FILE *out) {
+static struct block_header {
+    char tag[16];
+    uint32_t clen;
+}
+
+int aepipe_decrypt(unsigned char key[KEYSIZE], FILE* in, FILE* out) {
 	unsigned char iv[12] = {0};
-	char tag[16];
 
 	int ret = CORRUPT_DATA;
 	uint64_t counter = 0;
@@ -76,25 +89,20 @@ aeadpipe_error aeadpipe_decrypt(unsigned char key[KEYSIZE], FILE *in, FILE *out)
 		ERROR(INPUT_ERROR);
 	}
 
-	uint32_t clen;
+	struct block_header hdr;
 	do {
-		err = fread(tag, sizeof(tag), 1, in);
+		err = fread(&hdr, sizeof(struct block_header), 1, in);
 		if(err != 1) {
 			ERROR(INPUT_ERROR);
 		}
 
-		err = fread(&clen, sizeof(clen), 1, in);
-		if(err != 1) {
-			ERROR(INPUT_ERROR);
-		}
-
-		clen = ntohl(clen);
-		if(clen > MESSAGE_SIZE) {
+		hdr.clen = ntohl(hdr.clen);
+		if(hdr.clen > MESSAGE_SIZE) {
 			ERROR(CORRUPT_DATA);
 		}
 
 		if(clen != 0) {
-			err = fread(ciphertext, clen, 1, in);
+			err = fread(ciphertext, hdr.clen, 1, in);
 			if(err != 1) {
 				ERROR(INPUT_ERROR);
 			}
@@ -109,7 +117,7 @@ aeadpipe_error aeadpipe_decrypt(unsigned char key[KEYSIZE], FILE *in, FILE *out)
 		}
 
 		int plen;
-		err = EVP_DecryptUpdate(&ctx, plaintext, &plen, ciphertext, (int) clen);
+		err = EVP_DecryptUpdate(&ctx, plaintext, &plen, ciphertext, (int) hdr.clen);
 		if(err != 1) {
 			/* How the hell would this ever happen? */
 			ERROR(OPENSSL_WEIRD);
@@ -142,12 +150,12 @@ aeadpipe_error aeadpipe_decrypt(unsigned char key[KEYSIZE], FILE *in, FILE *out)
 
 out:
 	EVP_CIPHER_CTX_cleanup(&ctx);
-	
+
 	free(buffer);
 	return ret;
 }
 
-aeadpipe_error aeadpipe_encrypt(unsigned char key[KEYSIZE], struct gcm_context * aead_ctx, FILE *in, FILE *out) {
+int aepipe_encrypt(unsigned char key[KEYSIZE], struct gcm_context * aead_ctx, FILE *in, FILE *out) {
 	unsigned char iv[12] = {0};
 	char tag[16];
 
@@ -222,7 +230,7 @@ aeadpipe_error aeadpipe_encrypt(unsigned char key[KEYSIZE], struct gcm_context *
 			ERROR(OUTPUT_ERROR);
 		}
 
-		if(plen == 0) {
+		if(plen < MESSAGE_SIZE) {
 			ret = OK;
 			break;
 		}
