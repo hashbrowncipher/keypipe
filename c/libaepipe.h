@@ -1,7 +1,7 @@
 #define KEYSIZE 32
 
 struct aepipe_context;
-const char* aepipe_errorstrings[6];
+extern const char* aepipe_errorstrings[];
 
 size_t aepipe_context_size(void);
 void aepipe_init_context(struct aepipe_context* ctx);

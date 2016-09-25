@@ -27,22 +27,22 @@
 
 #define ERROR(x) { ret = x; goto out; }
 
-static typedef enum {
-    OK,
-    CORRUPT_DATA,
-    NO_MEMORY,
-    OPENSSL_WEIRD,
-    INPUT_ERROR,
-    OUTPUT_ERROR,
+typedef enum {
+	OK,
+	CORRUPT_DATA,
+	NO_MEMORY,
+	OPENSSL_WEIRD,
+	INPUT_ERROR,
+	OUTPUT_ERROR,
 } aepipe_error;
 
 const char* aepipe_errorstrings[6] = {
-    "OK",
-    "Input data was corrupt",
-    "Unable to allocate memory",
-    "OpenSSL returned an unexpected error",
-    "Unable to read input data",
-    "Unable to write output data",
+	"OK",
+	"Input data was corrupt",
+	"Unable to allocate memory",
+	"OpenSSL returned an unexpected error",
+	"Unable to read input data",
+	"Unable to write output data",
 };
 
 struct aepipe_context {
@@ -53,198 +53,150 @@ size_t aepipe_context_size() {
 	return sizeof(struct aepipe_context);
 }
 
-void init_gcm_context(struct aepipe_context* ctx) {
+void aepipe_init_context(struct aepipe_context* ctx) {
 	ctx->offset = 0;
 }
 
-static struct block_header {
-    char tag[16];
-    uint32_t clen;
-}
+struct block_state {
+	unsigned char plaintext[MESSAGE_SIZE];
+	char unused[4076];
+	unsigned char tag[16];
+	uint32_t len;
+	unsigned char ciphertext[MESSAGE_SIZE];
+};
+
+struct iv_numeric {
+	uint64_t unused;
+	uint64_t counter;
+};
+
+#define HEADER_SIZE (sizeof(uint32_t) + sizeof(unsigned char[16]))
+#define CHECK(err, x, y)  { if(x != y) { ERROR(err); } }
 
 int aepipe_decrypt(unsigned char key[KEYSIZE], FILE* in, FILE* out) {
-	unsigned char iv[12] = {0};
+	struct iv_numeric iv;
+	iv.unused = 0;
 
 	int ret = CORRUPT_DATA;
 	uint64_t counter = 0;
 
-	void * buffer = malloc(2 * MESSAGE_SIZE);
-	if(buffer == NULL) {
+	struct block_state * s = malloc(sizeof(struct block_state));
+	if(s == NULL) {
 		ERROR(NO_MEMORY);
 	}
-	void * plaintext = buffer;
-	void * ciphertext = buffer + MESSAGE_SIZE;
 
 	int err;
 
 	EVP_CIPHER_CTX ctx;
 	EVP_CIPHER_CTX_init(&ctx);
-	err = EVP_DecryptInit_ex(&ctx, EVP_aes_256_gcm(), NULL, key, NULL);
-	if(err != 1) {
-		ERROR(OPENSSL_WEIRD)
-	}
+	CHECK(OPENSSL_WEIRD, 1, EVP_DecryptInit_ex(&ctx, EVP_aes_256_gcm(), NULL, key, NULL));
 
 	err = fread(&counter, sizeof(counter), 1, in);
-	if(err != 1) {
-		ERROR(INPUT_ERROR);
-	}
+	CHECK(INPUT_ERROR, 0, ferror(in));
+	CHECK(CORRUPT_DATA, 1, err);
 
-	struct block_header hdr;
-	do {
-		err = fread(&hdr, sizeof(struct block_header), 1, in);
-		if(err != 1) {
-			ERROR(INPUT_ERROR);
-		}
+	while(true) {
+		err = fread(s->tag, 20, 1, in);
+		CHECK(INPUT_ERROR, 0, ferror(in));
+		CHECK(CORRUPT_DATA, 1, err);
 
-		hdr.clen = ntohl(hdr.clen);
-		if(hdr.clen > MESSAGE_SIZE) {
+		uint32_t len = ntohl(s->len);
+		if(len > MESSAGE_SIZE) {
 			ERROR(CORRUPT_DATA);
 		}
 
-		if(clen != 0) {
-			err = fread(ciphertext, hdr.clen, 1, in);
-			if(err != 1) {
-				ERROR(INPUT_ERROR);
-			}
+		if(len != 0) {
+			err = fread(s->ciphertext, len, 1, in);
+			CHECK(INPUT_ERROR, 0, ferror(in));
+			CHECK(CORRUPT_DATA, 1, err);
 		}
 
-		uint64_t counter_n = htobe64(counter);
-		memcpy(iv + 4, &counter_n, 8);
-
-		err = EVP_DecryptInit_ex(&ctx, NULL, NULL, NULL, iv);
-		if(err != 1) {
-			ERROR(OPENSSL_WEIRD);
-		}
+		iv.counter = htobe64(counter);
+		counter++;
+		CHECK(OPENSSL_WEIRD, 1, EVP_DecryptInit_ex(&ctx, NULL, NULL, NULL, (unsigned char *)&iv + 4));
 
 		int plen;
-		err = EVP_DecryptUpdate(&ctx, plaintext, &plen, ciphertext, (int) hdr.clen);
-		if(err != 1) {
-			/* How the hell would this ever happen? */
-			ERROR(OPENSSL_WEIRD);
-		}
-
-		err = EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_SET_TAG, sizeof(tag), tag);
-		if(err != 1) {
-			ERROR(OPENSSL_WEIRD);
-		}
+		CHECK(OPENSSL_WEIRD, 1, EVP_DecryptUpdate(&ctx, s->plaintext, &plen, s->ciphertext, (int) len));
+		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_SET_TAG, sizeof(s->tag), s->tag));
 
 		void * unused_buf = {0};
 		int32_t unused_len;
-		err = EVP_DecryptFinal_ex(&ctx, unused_buf, &unused_len);
-		if(err != 1) {
-			ERROR(CORRUPT_DATA);
-		}
-
-		counter++;
+		CHECK(CORRUPT_DATA, 1, EVP_DecryptFinal_ex(&ctx, unused_buf, &unused_len));
 
 		if(plen == 0) {
 			ret = OK;
 			break;
 		}
 
-		err = fwrite(plaintext, plen, 1, out);
-		if(err != 1) {
-			ERROR(OUTPUT_ERROR);
-		}
-	} while(true);
+		CHECK(OUTPUT_ERROR, 1, fwrite(s->plaintext, plen, 1, out));
+	};
 
 out:
 	EVP_CIPHER_CTX_cleanup(&ctx);
 
-	free(buffer);
+	free(s);
 	return ret;
 }
 
-int aepipe_encrypt(unsigned char key[KEYSIZE], struct gcm_context * aead_ctx, FILE *in, FILE *out) {
-	unsigned char iv[12] = {0};
-	char tag[16];
+
+int aepipe_encrypt(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, FILE *in, FILE *out) {
+	struct iv_numeric iv;
+	iv.unused = 0;
 
 	int ret = CORRUPT_DATA;
-	uint64_t counter = aead_ctx->offset;
+	uint64_t counter = aepipe_ctx->offset;
 
-	void * buffer = malloc(2 * MESSAGE_SIZE);
-	if(buffer == NULL) {
-		ERROR(1);
+    struct block_state * s = malloc(sizeof(struct block_state));
+	if(s == NULL) {
+		ERROR(NO_MEMORY);
 	}
-	void * plaintext = buffer;
-	void * ciphertext = buffer + MESSAGE_SIZE;
-
-	int err;
 
 	EVP_CIPHER_CTX ctx;
 	EVP_CIPHER_CTX_init(&ctx);
 
-	err = EVP_EncryptInit_ex(&ctx, EVP_aes_256_gcm(), NULL, key, NULL);
-	if(err != 1) {
-		ERROR(2)
-	}
+	CHECK(OPENSSL_WEIRD, 1, EVP_EncryptInit_ex(&ctx, EVP_aes_256_gcm(), NULL, key, NULL));
 
-	uint64_t counter_n = htobe64(counter);
-	fwrite(&counter_n, sizeof(counter_n), 1, out);
+	iv.counter = htobe64(counter);
+	CHECK(OUTPUT_ERROR, 1, fwrite(&iv.counter, sizeof(iv.counter), 1, out));
 
 	int32_t plen;
+	bool do_read = 1;
 	while(true) {
-		plen = fread(plaintext, 1, MESSAGE_SIZE, in);
-		if(plen < 0) {
-			ERROR(INPUT_ERROR);
+		if(do_read) {
+			plen = fread(s->plaintext, 1, MESSAGE_SIZE, in);
+			CHECK(INPUT_ERROR, 0, ferror(in));
+			if(plen < MESSAGE_SIZE) {
+				do_read = 0;
+			}
+		} else {
+			// Emit a zero length block to indicate the end of input
+			plen = 0;
 		}
 
-		counter_n = htobe64(counter);
-		memcpy(iv + 4, &counter_n, 8);
+		iv.counter = htobe64(counter);
+		counter++;
+		CHECK(OPENSSL_WEIRD, 1, EVP_EncryptInit_ex(&ctx, NULL, NULL, NULL, (unsigned char*)&iv + 4));
 
-		err = EVP_EncryptInit_ex(&ctx, NULL, NULL, NULL, iv);
-		if(err != 1) {
-			ERROR(OPENSSL_WEIRD);
-		}
-
-		int clen;
-		err = EVP_EncryptUpdate(&ctx, ciphertext, &clen, plaintext, plen);
-		if(err != 1) {
-			ERROR(OPENSSL_WEIRD);
-		}
+		int32_t unused_len;
+		CHECK(OPENSSL_WEIRD, 1, EVP_EncryptUpdate(&ctx, s->ciphertext, &unused_len, s->plaintext, plen));
 
 		void * unused_buf = {0};
-		int32_t unused_len;
-		err = EVP_EncryptFinal_ex(&ctx, unused_buf, &unused_len);
-		if(err != 1) {
-			ERROR(OPENSSL_WEIRD);
-		}
+		CHECK(OPENSSL_WEIRD, 1, EVP_EncryptFinal_ex(&ctx, unused_buf, &unused_len));
+		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_GET_TAG, sizeof(s->tag), s->tag));
 
-		err = EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_GET_TAG, sizeof(tag), tag);
-		if(err != 1) {
-			ERROR(OPENSSL_WEIRD);
-		}
+		s->len = htonl(plen);
+		CHECK(OUTPUT_ERROR, 1, fwrite(s->tag, HEADER_SIZE + plen, 1, out));
 
-		int plen_n = htonl(plen);
-
-		counter++;
-		err = fwrite(tag, sizeof(tag), 1, out);
-		if(err != 1) {
-			fprintf(stderr, "%d\n", err);
-			ERROR(OUTPUT_ERROR);
-		}
-
-		err = fwrite(&plen_n, sizeof(plen), 1, out);
-		if(err != 1) {
-			fprintf(stderr, "%d\n", err);
-			ERROR(OUTPUT_ERROR);
-		}
-
-		if(plen < MESSAGE_SIZE) {
+		if(0 == plen) {
 			ret = OK;
 			break;
-		}
-
-		err = fwrite(ciphertext, plen, 1, out);
-		if(err != 1) {
-			ERROR(OUTPUT_ERROR);
 		}
 	}
 
 out:
 	EVP_CIPHER_CTX_cleanup(&ctx);
-	aead_ctx->offset = counter;
-	free(buffer);
+	aepipe_ctx->offset = counter;
+	free(s);
 
 	return ret;
 }

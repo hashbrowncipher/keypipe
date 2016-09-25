@@ -64,13 +64,19 @@ int main(int argc, char* argv[]) {
 		handle_error("Couldn't set pipe buffer size");
 	}
 
+	setbuf(stdin, NULL);
+	setbuf(stdout, NULL);
+
 	int ret;
 	if(decrypt_flag) {
-		ret = aeadpipe_decrypt(key, stdin, stdout);
+		ret = aepipe_decrypt(key, stdin, stdout);
 	} else {
-		struct gcm_context * ctx = alloca(gcm_context_size());
-		init_gcm_context(ctx);
-		ret = aeadpipe_encrypt(key, ctx, stdin, stdout);
+		struct aepipe_context * ctx = alloca(aepipe_context_size());
+		aepipe_init_context(ctx);
+		ret = aepipe_encrypt(key, ctx, stdin, stdout);
+	}
+	if(ret) {
+		fprintf(stderr, "%s\n", aepipe_errorstrings[ret]);
 	}
 	exit(ret);
 }
