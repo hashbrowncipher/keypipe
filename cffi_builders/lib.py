@@ -13,5 +13,5 @@ def get_c_filename(*args):
 def get_c_contents(*args):
     return open(get_c_filename(*args), 'rb').read()
 
-ffi.cdef(get_c_contents('libaeadpipe.h'))
-ffi.set_source("aeadpipe._lib", None)
+ffi.cdef(get_c_contents('libaepipe.h'))
+ffi.set_source("aepipe._lib", None)

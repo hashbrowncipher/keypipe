@@ -28,10 +28,10 @@ struct aepipe_context;
  * seal (encrypt and authenticate) an aepipe stream
  * args:
  *   same as aepipe_unseal, AND
- *   ctx: an opaque pointer, used by aeadpipe_seal to manage successive calls
+ *   ctx: an opaque pointer, used by aepipe_seal to manage successive calls
  *   to aepipe_seal with the same key.
  *
- * Use aepipe_ctx as follows:
+ * Use an aepipe_ctx as follows:
  *   1. query aepipe_context_size to learn sizeof(struct aepipe_context)
  *   2. allocate a pointer to that many bytes
  *   3. call aepipe_init_context on that pointer

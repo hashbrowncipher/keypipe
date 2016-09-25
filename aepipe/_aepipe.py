@@ -6,11 +6,11 @@ import os
 from cffi import FFI
 
 from ._lib import ffi
-lib = ffi.dlopen(join(dirname(__file__), '_libaeadpipe.so'))
+lib = ffi.dlopen(join(dirname(__file__), '_libaepipe.so'))
 
-class AEADError(RuntimeError):
+class AEError(RuntimeError):
     def __init__(self, code):
-        self.msg = ffi.string(lib.aeadpipe_errorstrings[code])
+        self.msg = ffi.string(lib.aepipe_errorstrings[code])
 
     def __str__(self):
         return self.msg
@@ -19,17 +19,17 @@ def convert_file(f, mode):
     try:
         f.fileno()
     except AttributeError:
-        f = open(f, mode)
+        f = open(f, mode, 0)
 
     return f
 
 def check(ret):
     if ret != lib.OK:
-        raise AEADError(ret)
+        raise AEError(ret)
 
 def _seal(key, context, in_file, out_file):
     casted_context = ffi.cast('struct gcm_context *', ffi.addressof(context))
-    check(lib.aeadpipe_encrypt(key, casted_context,
+    check(lib.aepipe_seal(key, casted_context,
             convert_file(in_file, 'rb'),
             convert_file(out_file, 'wb')))
 
@@ -53,7 +53,7 @@ class Seal(object):
 def unseal(key, in_file, out_file):
     in_file = convert_file(in_file, 'rb')
     out_file = convert_file(out_file, 'wb')
-    check(lib.aeadpipe_decrypt(key, in_file, out_file))
+    check(lib.aepipe_unseal(key, in_file, out_file))
 
 def seal(key, in_file, out_file):
     Seal(key).seal(in_file, out_file)

@@ -1,4 +1,3 @@
 *.o
 *.so
-aeadpipe
-libaeadpipe.so
+aepipe
