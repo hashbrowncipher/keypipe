@@ -24,6 +24,7 @@
 //You'll also be using a shit-ton of memory.
 //There isn't really any good reason to increase this much.
 #define MESSAGE_SIZE (1024 * 1024)
+#define TAG_SIZE 16
 
 #define ERROR(x) { ret = x; goto out; }
 
@@ -37,7 +38,7 @@ typedef enum {
 	CONCURRENCY_ERROR,
 } aepipe_error;
 
-const char* aepipe_errorstrings[7] = {
+const char* aepipe_errorstrings[8] = {
 	"OK",
 	"Input data was corrupt",
 	"Unable to allocate memory",
@@ -45,6 +46,7 @@ const char* aepipe_errorstrings[7] = {
 	"Unable to read input data",
 	"Unable to write output data",
 	"Improper concurrent access of an aepipe context",
+	"Unrecognized version number",
 };
 
 struct aepipe_context {
@@ -61,13 +63,17 @@ void aepipe_init_context(struct aepipe_context* ctx) {
 	__sync_lock_release(&ctx->flag);
 }
 
-struct block_state {
+struct seal_block_state {
 	unsigned char plaintext[MESSAGE_SIZE];
-	char unused[4076];
-	unsigned char tag[16];
 	uint32_t len;
+	unsigned char tag[16];
 	unsigned char ciphertext[MESSAGE_SIZE];
-};
+} __attribute__((__packed__));
+
+struct unseal_block_state {
+	unsigned char plaintext[MESSAGE_SIZE];
+	unsigned char input[MESSAGE_SIZE + TAG_SIZE + 4];
+} __attribute__((__packed__));
 
 struct iv_numeric {
 	uint64_t unused;
@@ -82,9 +88,8 @@ int aepipe_unseal(unsigned char key[KEYSIZE], FILE* in, FILE* out) {
 	iv.unused = 0;
 
 	int ret = CORRUPT_DATA;
-	uint64_t counter = 0;
 
-	struct block_state * s = malloc(sizeof(struct block_state));
+	struct unseal_block_state * s = malloc(sizeof(struct unseal_block_state));
 	if(s == NULL) {
 		ERROR(NO_MEMORY);
 	}
@@ -95,33 +100,40 @@ int aepipe_unseal(unsigned char key[KEYSIZE], FILE* in, FILE* out) {
 	EVP_CIPHER_CTX_init(&ctx);
 	CHECK(OPENSSL_WEIRD, 1, EVP_DecryptInit_ex(&ctx, EVP_aes_256_gcm(), NULL, key, NULL));
 
-	err = fread(&counter, sizeof(counter), 1, in);
+	err = fread(&s->input, 12, 1, in);
 	CHECK(INPUT_ERROR, 0, ferror(in));
 	CHECK(CORRUPT_DATA, 1, err);
 
-	while(true) {
-		err = fread(s->tag, 20, 1, in);
-		CHECK(INPUT_ERROR, 0, ferror(in));
-		CHECK(CORRUPT_DATA, 1, err);
+	void* input_ptr = s->input;
+	uint64_t counter = *(uint64_t *)input_ptr;
+	input_ptr += sizeof(uint64_t);
 
-		uint32_t len = ntohl(s->len);
+	while(true) {
+		uint32_t len = ntohl(*(uint32_t *)input_ptr);
 		if(len > MESSAGE_SIZE) {
 			ERROR(CORRUPT_DATA);
 		}
 
+		uint32_t to_read = TAG_SIZE;
 		if(len != 0) {
-			err = fread(s->ciphertext, len, 1, in);
-			CHECK(INPUT_ERROR, 0, ferror(in));
-			CHECK(CORRUPT_DATA, 1, err);
+			// If this block is of nonzero length, read four more bytes representing
+			// the next block's length.
+			to_read += len + sizeof(len);
 		}
 
+		err = fread(s->input, to_read, 1, in);
+		CHECK(INPUT_ERROR, 0, ferror(in));
+		CHECK(CORRUPT_DATA, 1, err);
+		input_ptr = s->input;
+
 		iv.counter = htobe64(counter);
-		counter++;
 		CHECK(OPENSSL_WEIRD, 1, EVP_DecryptInit_ex(&ctx, NULL, NULL, NULL, (unsigned char *)&iv + 4));
+		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_SET_TAG, TAG_SIZE, input_ptr));
+		input_ptr += TAG_SIZE;
 
 		int plen;
-		CHECK(OPENSSL_WEIRD, 1, EVP_DecryptUpdate(&ctx, s->plaintext, &plen, s->ciphertext, (int) len));
-		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_SET_TAG, sizeof(s->tag), s->tag));
+		CHECK(OPENSSL_WEIRD, 1, EVP_DecryptUpdate(&ctx, s->plaintext, &plen, input_ptr, (int) len));
+		input_ptr += len;
 
 		void * unused_buf = {0};
 		int32_t unused_len;
@@ -132,6 +144,7 @@ int aepipe_unseal(unsigned char key[KEYSIZE], FILE* in, FILE* out) {
 			break;
 		}
 
+		counter++;
 		CHECK(OUTPUT_ERROR, 1, fwrite(s->plaintext, plen, 1, out));
 	};
 
@@ -141,7 +154,6 @@ out:
 	free(s);
 	return ret;
 }
-
 
 int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, FILE *in, FILE *out) {
 	if(__sync_lock_test_and_set(&aepipe_ctx->flag, true)) {
@@ -153,7 +165,7 @@ int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, 
 
 	uint64_t counter = aepipe_ctx->offset;
 
-    struct block_state * s = malloc(sizeof(struct block_state));
+    struct seal_block_state * s = malloc(sizeof(struct seal_block_state));
 	if(s == NULL) {
 		ERROR(NO_MEMORY);
 	}
@@ -192,7 +204,7 @@ int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, 
 		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_GET_TAG, sizeof(s->tag), s->tag));
 
 		s->len = htonl(plen);
-		CHECK(OUTPUT_ERROR, 1, fwrite(s->tag, HEADER_SIZE + plen, 1, out));
+		CHECK(OUTPUT_ERROR, 1, fwrite(&s->len, HEADER_SIZE + plen, 1, out));
 
 		if(0 == plen) {
 			ret = OK;

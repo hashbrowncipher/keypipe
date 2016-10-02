@@ -46,7 +46,7 @@ struct aepipe_context;
 int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, FILE* in, FILE* out);
 
 /* Returns sizeof(struct aepipe_context) */
-size_t aepipe_context_size();
+size_t aepipe_context_size(void);
 
 /* Initializes a struct aepipe_context */
 void aepipe_init_context(struct aepipe_context* ctx);
