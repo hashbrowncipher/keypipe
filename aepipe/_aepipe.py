@@ -1,37 +1,64 @@
+from contextlib import contextmanager
+from errno import EPERM
+from errno import EBADF
 from os.path import dirname
 from os.path import join
 from threading import Lock
+import fcntl
 import os
 
-from cffi import FFI
+from ._libaepipe import lib, ffi
 
-from ._lib import ffi
-lib = ffi.dlopen(join(dirname(__file__), '_libaepipe.so'))
+from contexter import Contexter
+
+if not hasattr(fcntl, 'F_SETPIPE_SZ'):
+    import platform
+
+    if platform.system() == 'Linux':
+        fcntl.F_SETPIPE_SZ = 1031
 
 class AEError(RuntimeError):
     def __init__(self, code):
-        self.msg = ffi.string(lib.aepipe_errorstrings[code])
+        self.msg = ffi.string(lib.aepipe_errorstrings[code]).decode('utf-8')
 
     def __str__(self):
         return self.msg
 
-def convert_file(f, mode):
+@contextmanager
+def open_fd(filename, mode):
+    f = os.open(filename, mode, 0o666)
     try:
-        f.fileno()
-    except AttributeError:
-        f = open(f, mode, 0)
+        yield f
+    finally:
+        os.close(f)
+
+def _prep_file(ctx, f, mode):
+    if not isinstance(f, int):
+        try:
+            f = f.fileno()
+        except AttributeError:
+            f = ctx << open_fd(f, mode)
+
+    try:
+        print(f)
+        fcntl.fcntl(f, fcntl.F_SETPIPE_SZ, 1024 * 1024)
+    except (IOError, PermissionError) as e:
+        if e.errno not in (EPERM, EBADF):
+            raise
 
     return f
 
-def check(ret):
-    if ret != lib.OK:
+def _check(ret):
+    if ret != 0:
         raise AEError(ret)
 
 def _seal(key, context, in_file, out_file):
-    casted_context = ffi.cast('struct gcm_context *', ffi.addressof(context))
-    check(lib.aepipe_seal(key, casted_context,
-            convert_file(in_file, 'rb'),
-            convert_file(out_file, 'wb')))
+    casted_aepipe_context = ffi.cast('struct aepipe_context *', ffi.addressof(context))
+    with Contexter() as contexter:
+        in_file = _prep_file(contexter, in_file, os.O_RDONLY)
+        out_file = _prep_file(contexter, out_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+
+        _check(lib.aepipe_seal(key, casted_aepipe_context, in_file, out_file))
 
 class Seal(object):
     __slots__ = ('_context', '_lock', '_key')
@@ -41,9 +68,15 @@ class Seal(object):
         key: 32 random bytes. Using the same key multitple times destroys the
         security guarantees of AES-GCM.
         """
+        if(len(key) != lib.KEYSIZE):
+            raise RuntimeError('The provided key is length {}, expected {}'.format(len(key), lib.KEYSIZE))
         self._key = key
-        self._lock = Lock() # definitely not re-entrant
-        self._context = ffi.new('char[]', lib.gcm_context_size())
+
+        # aepipe has its own very basic locking here
+        # it will return an error when used inappropriately
+        # this will do the waiting for you
+        self._lock = Lock()
+        self._context = ffi.new('char[]', lib.aepipe_context_size())
 
     def seal(self, in_file, out_file):
         with self._lock:
@@ -51,9 +84,10 @@ class Seal(object):
 
 
 def unseal(key, in_file, out_file):
-    in_file = convert_file(in_file, 'rb')
-    out_file = convert_file(out_file, 'wb')
-    check(lib.aepipe_unseal(key, in_file, out_file))
+    with Contexter() as contexter:
+        in_file = _prep_file(contexter, in_file, os.O_RDONLY)
+        out_file = _prep_file(contexter, out_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+        _check(lib.aepipe_unseal(key, in_file, out_file))
 
 def seal(key, in_file, out_file):
     Seal(key).seal(in_file, out_file)

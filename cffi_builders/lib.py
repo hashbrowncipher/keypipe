@@ -11,7 +11,16 @@ def get_c_filename(*args):
     return join(dirname(mydir), 'c', *args)
 
 def get_c_contents(*args):
-    return open(get_c_filename(*args), 'rb').read()
+    return open(get_c_filename(*args), 'r').read()
 
 ffi.cdef(get_c_contents('libaepipe.h'))
-ffi.set_source("aepipe._lib", None)
+ffi.set_source(
+    "aepipe._libaepipe",
+    '#include "libaepipe.h"',
+    libraries=['crypto'],
+    sources=['c/libaepipe.c'],
+    include_dirs=['c']
+)
+
+if __name__ == "__main__":
+    ffi.compile()
