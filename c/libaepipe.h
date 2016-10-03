@@ -16,8 +16,14 @@ extern const char* aepipe_errorstrings[];
  * returns 0 on success
  * returns non-zero on failure. Any non-zero return codes can be looked up in
  * aepipe_errorstrings.
+ *
+ * aepipe uses direct file-descriptor I/O to ensure compatibility with the
+ * largest cross-section of bindings. Python 3, for instance, does not use
+ * libc FILE pointers internally, and as a result accessing aepipe from
+ * Python 3 would require a bunch of operations on the file descriptor
+ * (dup, fopen, setvbuf, fclose).
  */
-int aepipe_unseal(unsigned char key[KEYSIZE], FILE* in, FILE* out);
+int aepipe_unseal(unsigned char key[KEYSIZE], int in, int out);
 
 /*
  * an opaque struct for use with aepipe_seal, as described below.
@@ -43,7 +49,7 @@ struct aepipe_context;
  * same key IF AND ONLY IF the same aepipe_context object is passed to
  * aepipe_seal every time. Otherwise it is unacceptable.
  */
-int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, FILE* in, FILE* out);
+int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, int in, int out);
 
 /* Returns sizeof(struct aepipe_context) */
 size_t aepipe_context_size(void);
