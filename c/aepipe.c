@@ -64,9 +64,6 @@ int main(int argc, char* argv[]) {
 		handle_error("Couldn't set pipe buffer size");
 	}
 
-	setbuf(stdin, NULL);
-	setbuf(stdout, NULL);
-
 	int ret;
 	if(decrypt_flag) {
 		ret = aepipe_unseal(key, STDIN_FILENO, STDOUT_FILENO);

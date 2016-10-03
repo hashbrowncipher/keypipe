@@ -1,11 +1,15 @@
 CC=gcc
-CFLAGS=-fPIC -O2 -g -Wall
-.PHONY = all
+CFLAGS=-O2 -g -Wall
+.PHONY = all clean
+TARGETS=libaepipe.so aepipe
 
-all: libaepipe.so aepipe
+all: $(TARGETS)
+
+clean:
+	rm -f $(TARGETS)
 
 libaepipe.so: libaepipe.c
-	$(CC) $(CFLAGS) -shared $^ -lcrypto -o $@
+	$(CC) $(CFLAGS) -fPIC -shared $^ -lcrypto -o $@
 
 aepipe: aepipe.c libaepipe.so
 	$(CC) $(CFLAGS) $^ -Wl,-rpath,. -o $@

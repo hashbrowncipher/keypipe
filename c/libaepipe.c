@@ -125,10 +125,8 @@ int aepipe_unseal(unsigned char key[KEYSIZE], int in, int out) {
 
 	int ret = CORRUPT_DATA;
 
-	struct unseal_block_state * s = malloc(sizeof(struct unseal_block_state));
-	if(s == NULL) {
-		ERROR(NO_MEMORY);
-	}
+	struct unseal_block_state * s = NULL;
+	CHECK(NO_MEMORY, 0, posix_memalign((void **)&s, 4096, sizeof(struct unseal_block_state)))
 
 	EVP_CIPHER_CTX ctx;
 	EVP_CIPHER_CTX_init(&ctx);
@@ -198,10 +196,8 @@ int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, 
 
 	uint64_t counter = aepipe_ctx->offset;
 
-    struct seal_block_state * s = malloc(sizeof(struct seal_block_state));
-	if(s == NULL) {
-		ERROR(NO_MEMORY);
-	}
+	struct seal_block_state * s = NULL;
+	CHECK(NO_MEMORY, 0, posix_memalign((void **)&s, 4096, sizeof(struct unseal_block_state)))
 
 	EVP_CIPHER_CTX ctx;
 	EVP_CIPHER_CTX_init(&ctx);
