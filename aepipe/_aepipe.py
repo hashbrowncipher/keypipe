@@ -1,3 +1,4 @@
+from contextlib import closing
 from contextlib import contextmanager
 from errno import EPERM
 from errno import EBADF
@@ -24,13 +25,22 @@ class AEError(RuntimeError):
     def __str__(self):
         return self.msg
 
+class CloseableFd(int):
+    _closed = False
+
+    def close(self):
+        if not self._closed:
+            self._closed = True
+            os.close(self)
+
+def closing_fd(fd):
+    return closing(CloseableFd(fd))
+
 @contextmanager
 def open_fd(filename, mode):
-    f = os.open(filename, mode, 0o666)
-    try:
-        yield f
-    finally:
-        os.close(f)
+    fd = os.open(filename, mode, 0o666)
+    with closing_fd(fd):
+        yield fd
 
 def _prep_file(ctx, f, mode):
     if not isinstance(f, int):
@@ -40,7 +50,6 @@ def _prep_file(ctx, f, mode):
             f = ctx << open_fd(f, mode)
 
     try:
-        print(f)
         fcntl.fcntl(f, fcntl.F_SETPIPE_SZ, 1024 * 1024)
     except (IOError, PermissionError) as e:
         if e.errno not in (EPERM, EBADF):
@@ -82,12 +91,14 @@ class Seal(object):
         with self._lock:
             _seal(self._key, self._context, in_file, out_file)
 
-
-def unseal(key, in_file, out_file):
+def _unseal_unchecked(key, in_file, out_file):
     with Contexter() as contexter:
         in_file = _prep_file(contexter, in_file, os.O_RDONLY)
         out_file = _prep_file(contexter, out_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
-        _check(lib.aepipe_unseal(key, in_file, out_file))
+        return lib.aepipe_unseal(key, in_file, out_file)
+
+def unseal(*args):
+    _check(_unseal_unchecked(*args))
 
 def seal(key, in_file, out_file):
     Seal(key).seal(in_file, out_file)
