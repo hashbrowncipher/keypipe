@@ -68,6 +68,8 @@ void aepipe_init_context(struct aepipe_context* ctx) {
 
 struct seal_block_state {
 	unsigned char plaintext[MESSAGE_SIZE];
+	// pad to 16 byte alignment
+	char padding[12];
 	uint32_t len;
 	unsigned char tag[TAG_SIZE];
 	unsigned char ciphertext[MESSAGE_SIZE];
