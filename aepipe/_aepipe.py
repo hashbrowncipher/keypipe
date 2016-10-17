@@ -49,9 +49,15 @@ def _prep_file(ctx, f, mode):
         except AttributeError:
             f = ctx << open_fd(f, mode)
 
+    exceptions_to_catch = (IOError,)
+    try:
+        exceptions_to_catch += (PermissionError,)
+    except NameError:
+        pass
+
     try:
         fcntl.fcntl(f, fcntl.F_SETPIPE_SZ, 1024 * 1024)
-    except (IOError, PermissionError) as e:
+    except exceptions_to_catch as e:
         if e.errno not in (EPERM, EBADF):
             raise
 
