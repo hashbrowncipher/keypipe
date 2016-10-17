@@ -15,7 +15,7 @@ def get_c_contents(*args):
 
 ffi.cdef(get_c_contents('libaepipe.h'))
 ffi.set_source(
-    "aepipe._libaepipe",
+    "keypipe._libaepipe",
     '#include "libaepipe.h"',
     libraries=['crypto'],
     sources=['c/libaepipe.c'],
