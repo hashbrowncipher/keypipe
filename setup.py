@@ -13,4 +13,10 @@ setup(
       "contexter>=0.1.3",
     ],
     cffi_modules=['cffi_builders/lib.py:ffi'],
+    entry_points=dict(
+        console_scripts=[
+            'keyseal=keypipe.cli:seal',
+            'keyunseal=keypipe.cli:unseal',
+        ],
+    ),
 )
