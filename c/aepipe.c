@@ -51,12 +51,13 @@ int main(int argc, char* argv[]) {
 
 	unsigned char key[KEYSIZE];
 
-	int rc;
-	rc = fread(key, KEYSIZE, 1, keyfile);
-	if(rc != 1) {
+	size_t read_size;
+	read_size = fread(key, KEYSIZE, 1, keyfile);
+	if(read_size != 1) {
 		fprintf(stderr, "Could not read key material from file\n");
 		exit(2);
 	}
+	int rc;
 	rc = fclose(keyfile);
 
 	rc = fcntl(STDIN_FILENO, F_SETPIPE_SZ, 1024 * 1024);

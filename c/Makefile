@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-O2 -g -Wall
+CFLAGS=-O2 -g -Wall -Wconversion
 .PHONY = all clean
 TARGETS=libaepipe.so aepipe
 
