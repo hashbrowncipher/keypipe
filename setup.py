@@ -8,8 +8,8 @@ install_requires = [
   "contexter>=0.1.3",
 ]
 
-if sys.version_info:
-    install_requires += "futures>=3.0.5"
+if sys.version_info.major < 3:
+    install_requires.append("futures>=3.0.5")
 
 setup(
     name='keypipe',
