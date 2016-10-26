@@ -17,7 +17,7 @@
 #define EXIT_FAILURE 1
 #define handle_error(message) { perror((message)); exit(EXIT_FAILURE); }
 
-void do_usage(int argc, char* argv[]) {
+void do_usage(int argc __attribute__((unused)), char* argv[]) {
 	fprintf(stderr, "Usage: %s [-d] <keyfile>\n", argv[0]);
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Always check the return code!\n");

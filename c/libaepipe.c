@@ -248,8 +248,8 @@ int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, 
 	buf += TAG_SIZE;
 	unsigned char * ciphertext = buf;
 
-	mprotect(plaintext, MESSAGE_SIZE, PROT_READ | PROT_WRITE);
-	mprotect(len, 4 + TAG_SIZE + MESSAGE_SIZE, PROT_READ | PROT_WRITE);
+	CHECK(NO_MEMORY, 0, mprotect(plaintext, MESSAGE_SIZE, PROT_READ | PROT_WRITE))
+	CHECK(NO_MEMORY, 0, mprotect(len, 4 + TAG_SIZE + MESSAGE_SIZE, PROT_READ | PROT_WRITE));
 
 	EVP_CIPHER_CTX ctx;
 	EVP_CIPHER_CTX_init(&ctx);
