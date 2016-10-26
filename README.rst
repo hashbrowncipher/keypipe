@@ -1,6 +1,14 @@
 aepipe: a pipe-oriented authenticated encryptor
 ===============================================
 
+.. image:: https://img.shields.io/coverity/scan/10638.svg
+    :target: https://scan.coverity.com/projects/hashbrowncipher-keypipe
+    :alt: Coverity Scan Build Status
+
+.. image:: https://travis-ci.org/hashbrowncipher/keypipe.svg?branch=master
+    :target: https://travis-ci.org/hashbrowncipher/keypipe
+    :alt: Travis-CI Build Status
+
 aepipe uses AES-GCM to perform authenticated encryption on pipes, providing
 confidentiality and authenticity.
 
