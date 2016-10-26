@@ -1,3 +1,4 @@
+.PHONY: c
 c:
 	$(MAKE) -C c
 
