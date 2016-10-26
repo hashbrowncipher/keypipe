@@ -7,6 +7,7 @@ language: c
 addons:
   apt:
     packages:
+    - tox
     - libssl-dev
 
 script: "./test.sh"
