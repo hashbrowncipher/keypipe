@@ -1,8 +1,8 @@
 import pytest
 
-from aepipe import AEError
-from aepipe import unseal
-from aepipe._aepipe import _unseal_unchecked
+from keypipe import AEError
+from keypipe import unseal
+from keypipe._aepipe import _unseal_unchecked
 
 from test.helpers import *
 

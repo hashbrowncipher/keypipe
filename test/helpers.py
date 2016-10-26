@@ -6,7 +6,7 @@ import os
 
 from contexter import Contexter
 
-from aepipe._aepipe import closing_fd
+from keypipe._aepipe import closing_fd
 
 uh = binascii.unhexlify
 docs_key = uh('bdccdb944d9f1f560d66a5615bd4c9e93ae84184eda521643d7f6c88e5cf6908')

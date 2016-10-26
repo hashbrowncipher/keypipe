@@ -9,7 +9,7 @@ addons:
     packages:
     - libssl-dev
 
-script: "make -C c"
+script: "./test.sh"
 
 addons:
   coverity_scan:

@@ -1,4 +1,4 @@
-from aepipe import seal
+from keypipe import seal
 
 from test.helpers import *
 
