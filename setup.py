@@ -1,5 +1,15 @@
+import sys
+
 from setuptools import setup, Extension
 from setuptools import find_packages
+
+install_requires = [
+  "cffi>=1.0.0",
+  "contexter>=0.1.3",
+]
+
+if sys.version_info:
+    install_requires += "futures>=3.0.5"
 
 setup(
     name='keypipe',
@@ -8,10 +18,7 @@ setup(
     author_email='josh@code406.com',
     packages = ['keypipe'],
     setup_requires=["cffi>=1.0.0"],
-    install_requires=[
-      "cffi>=1.0.0",
-      "contexter>=0.1.3",
-    ],
+    install_requires=install_requires,
     cffi_modules=['cffi_builders/lib.py:ffi'],
     entry_points=dict(
         console_scripts=[
