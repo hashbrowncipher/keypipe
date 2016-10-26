@@ -4,6 +4,15 @@ env:
   - secure: "WMYNPfcutYahs6gFjPKNxvS0lpL7JXpvzgaxlV58HMxQcgD/ccJX3J7rkYySNA6N2jTZn1Pzv5BLZqyEZi2iODjyOnFs+72V63poq+9QsvfGUbPSsGkatx1cDuWxznN/+2Qm5kWfCKcH/FIGyq5m0oSSIr7qNtIhe3aFTc8hdZs="
 
 language: python
+matrix:
+  include:
+  - python: "2.7"
+    env: ENVLIST="py27"
+  - python: "3.5"
+    env: ENVLIST="py35"
+  - python: "3.5"
+    env: MAKE="yes"
+
 addons:
   apt:
     packages:
@@ -11,7 +20,7 @@ addons:
     - python3.5
 
 install: "pip install tox"
-script: "./test.sh"
+script: "./test.sh $ENVLIST"
 
 addons:
   coverity_scan:
