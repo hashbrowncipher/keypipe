@@ -4,7 +4,7 @@ aepipe: a pipe-oriented authenticated encryptor
 aepipe uses AES-GCM to perform authenticated encryption on pipes, providing
 confidentiality and authenticity.
 
-.. contents::
+.. contents:: **Table of Contents**
 
 What is authenticated encryption?
 ---------------------------------
@@ -34,13 +34,14 @@ Why not use...
 
 gpg provides a variant of authenticated encryption that encrypts a SHA-1 hash
 which has been concatenated to the plaintext. This violates the `cryptographic
-doom principle<https://moxie.org/blog/the-cryptographic-doom-principle/>`_.
+doom principle <https://moxie.org/blog/the-cryptographic-doom-principle/>`_.
 Worse, the command line tool outputs corrupted data, and only later warns the
 user.
 
 ::
 
-  $ dd if=/dev/zero bs=1M count=1 | gpg --symmetric --no-use-agent --passphrase-file passphrase --cipher-algo AES256 -z0 > /dev/null
+  $ dd if=/dev/zero bs=1M count=1 | gpg --symmetric --no-use-agent --passphrase-file passphrase \
+    --cipher-algo AES256 -z0 > /dev/null
   $ tr 'N' 'a' < output | gpg --decrypt --no-use-agent --passphrase-file passphrase | xxd
   Reading passphrase from file descriptor 3
   gpg: AES256 encrypted data
@@ -59,12 +60,14 @@ user.
   gpg (GnuPG) 1.4.20
   Copyright (C) 2015 Free Software Foundation, Inc.
 
-It's also not the fastest thing:
+It's also very slow:
 
 ::
+
   $ key=4d8ec20204895b1b875ad2c8a68a06f488c10ffb57b511c0deefc3e6f46dd7c9
   $ echo $key | xxd -p -r > passphrase
-  $ dd if=/dev/zero bs=1M count=4096 | gpg --symmetric --no-use-agent --passphrase-file passphrase --cipher-algo AES256 -z0 > /dev/null
+  $ dd if=/dev/zero bs=1M count=4096 | gpg --symmetric --no-use-agent --passphrase-file passphrase \
+    --cipher-algo AES256 -z0 > /dev/null
   Reading passphrase from file descriptor 3
   4096+0 records in
   4096+0 records out
@@ -73,8 +76,8 @@ It's also not the fastest thing:
 **openssl enc**
 
 openssl enc provides encryption but not authentication. It is fast, reaching
-1GB/sec easily. Its key derivation algorithm does `leave much to be
-desired<http://crypto.stackexchange.com/questions/3298/is-there-a-standard-for-openssl-interoperable-aes-encryption/35614#35614>`
+1GB/sec easily. Its key derivation algorithm does `leave much to be desired
+<http://crypto.stackexchange.com/questions/3298/is-there-a-standard-for-openssl-interoperable-aes-encryption/35614#35614>`_.
 
 Command-line usage
 ------------------
@@ -171,7 +174,7 @@ authenticated encryption tool capable of streaming output.
 The goals envisioned in its design are:
 
 security of data
-  (see [Threat Model](#threat-model), below)
+  (see `Threat model`_, below)
 
 streaming
   aepipe authenticates data in chunks, emitting output as it makes progress
@@ -325,9 +328,3 @@ The current implementation of aepipe decryption will not read any bytes from its
 input pipe past the last message block. Users MAY place any bytes they desire in
 the input pipe past the last message block. Of course, aepipe makes no guarantee
 what those bytes contain.
-
-Alternative Tools
------------------
-
-keypipe was built to fill a need for a high performance authenticated encryption
-solution. I considered a few other tools before going down this route
