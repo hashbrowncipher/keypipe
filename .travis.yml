@@ -11,7 +11,7 @@ matrix:
   - python: "3.5"
     env: ENVLIST="py35"
   - python: "3.5"
-    env: MAKE="yes"
+    env: MAKE="make"
 
 addons:
   apt:
