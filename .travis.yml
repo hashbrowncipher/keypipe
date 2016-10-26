@@ -16,5 +16,6 @@ addons:
     project:
       name: hashbrowncipher/keypipe
       description: "A pipe oriented authenticated encryptor"
-    build_command_prepend: "make -C c"
+    notification_email: "hashbrowncipher@gmail.com"
+    build_command_prepend: "make c"
     branch_pattern: coverity_scan
