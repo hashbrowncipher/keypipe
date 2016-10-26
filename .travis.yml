@@ -1,0 +1,20 @@
+env:
+  global:
+  # COVERITY_SCAN_TOKEN
+  - secure: "WMYNPfcutYahs6gFjPKNxvS0lpL7JXpvzgaxlV58HMxQcgD/ccJX3J7rkYySNA6N2jTZn1Pzv5BLZqyEZi2iODjyOnFs+72V63poq+9QsvfGUbPSsGkatx1cDuWxznN/+2Qm5kWfCKcH/FIGyq5m0oSSIr7qNtIhe3aFTc8hdZs="
+
+language: c
+addons:
+  apt:
+    packages:
+    - libssl-dev
+
+script: "make -C c"
+
+addons:
+  coverity_scan:
+    project:
+      name: hashbrowncipher/keypipe
+      description: "A pipe oriented authenticated encryptor"
+    build_command_prepend: "make -C c"
+    branch_pattern: coverity_scan
