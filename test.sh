@@ -4,5 +4,5 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-test -n "${MAKE:-}" && make
-test -n "${ENVLIST:-}" && tox -e "$ENVLIST"
+test -z "${MAKE:-}" || make
+test -z "${ENVLIST:-}" || tox -e "$ENVLIST"
