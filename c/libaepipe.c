@@ -76,11 +76,6 @@ struct seal_block_state {
 	unsigned char ciphertext[MESSAGE_SIZE];
 } __attribute__((__packed__));
 
-struct iv_numeric {
-	uint64_t unused;
-	uint64_t counter;
-};
-
 #define CHECK(err, x, y)  { if(x != y) { ERROR(err); } }
 
 size_t fdread(void *ptr, size_t size, size_t nmemb, int fd) {
@@ -124,9 +119,6 @@ size_t fdwrite(void *ptr, size_t size, size_t nmemb, int fd) {
 #define round_up(dividend, divisor) ((((dividend) + divisor - 1) / divisor) * divisor)
 
 int aepipe_unseal(unsigned char key[KEYSIZE], int in, int out) {
-	struct iv_numeric iv;
-	iv.unused = 0;
-
 	int ret = CORRUPT_DATA;
 
 	const unsigned long page_size = (unsigned long) sysconf(_SC_PAGESIZE);
@@ -169,6 +161,10 @@ int aepipe_unseal(unsigned char key[KEYSIZE], int in, int out) {
 	counter = *(uint64_t *)input_ptr;
 	input_ptr += sizeof(counter);
 
+	unsigned char *iv = alloca(12);
+	memset(iv, 0, 12);
+	uint64_t * iv_numeric = (uint64_t *)(iv + 4);
+
 	while(true) {
 		uint32_t len = ntohl(*(uint32_t *)input_ptr);
 		input_ptr += sizeof(len);
@@ -176,8 +172,8 @@ int aepipe_unseal(unsigned char key[KEYSIZE], int in, int out) {
 			ERROR(CORRUPT_DATA);
 		}
 
-		iv.counter = htobe64(counter);
-		CHECK(OPENSSL_WEIRD, 1, EVP_DecryptInit_ex(&ctx, NULL, NULL, NULL, (unsigned char *)&iv + 4));
+		*iv_numeric = htobe64(counter);
+		CHECK(OPENSSL_WEIRD, 1, EVP_DecryptInit_ex(&ctx, NULL, NULL, NULL, iv));
 		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_SET_TAG, TAG_SIZE, input_ptr));
 		input_ptr += TAG_SIZE;
 
@@ -215,10 +211,8 @@ int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, 
 		//Guarantee ourselves mutual exclusion by complaining if we don't have it.
 		return CONCURRENCY_ERROR;
 	}
-	int ret = CORRUPT_DATA;
-	struct iv_numeric iv;
-	iv.unused = 0;
 
+	int ret = CORRUPT_DATA;
 	uint64_t counter = aepipe_ctx->offset;
 
 	const unsigned long page_size = (unsigned long) sysconf(_SC_PAGESIZE);
@@ -259,8 +253,11 @@ int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, 
 	uint8_t version = 1;
 	CHECK(OUTPUT_ERROR, 1, fdwrite(&version, sizeof(version), 1, out));
 
-	iv.counter = htobe64(counter);
-	CHECK(OUTPUT_ERROR, 1, fdwrite(&iv.counter, sizeof(iv.counter), 1, out));
+	unsigned char * iv = alloca(12);
+	memset(iv, 0, 12);
+	uint64_t * iv_numeric = (uint64_t *)(iv + 4);
+	*iv_numeric = htobe64(counter);
+	CHECK(OUTPUT_ERROR, 1, fdwrite(iv_numeric, sizeof(uint64_t), 1, out));
 
 	size_t plen;
 	bool do_read = 1;
@@ -275,9 +272,9 @@ int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, 
 			plen = 0;
 		}
 
-		iv.counter = htobe64(counter);
+		*iv_numeric = htobe64(counter);
 		counter++;
-		CHECK(OPENSSL_WEIRD, 1, EVP_EncryptInit_ex(&ctx, NULL, NULL, NULL, (unsigned char*)&iv + 4));
+		CHECK(OPENSSL_WEIRD, 1, EVP_EncryptInit_ex(&ctx, NULL, NULL, NULL, iv));
 
 		int32_t unused_len;
 		CHECK(OPENSSL_WEIRD, 1, EVP_EncryptUpdate(&ctx, ciphertext, &unused_len, plaintext, (int) plen));
