@@ -17,13 +17,7 @@ providers = dict(
     keyfile='keypipe.managers.keyfile',
 )
 
-class InsufficientDataError(RuntimeError):
-    pass
-
-class UnrecognizedMagicError(RuntimeError):
-    pass
-
-class UnrecognizedVersionError(RuntimeError):
+class InvalidKeyError(RuntimeError):
     pass
 
 def hmac(key, data, func):
@@ -74,6 +68,7 @@ def seal(provider_name, provider_args, context, in_fileno, out_fileno):
     # a correct key, the checksum will match.
     header = serialize(salt, checksum, { provider_name: blob })
     out_fileno.write(header)
+    out_fileno.flush()
     _aepipe.seal(key, in_fileno, out_fileno)
 
 @contextmanager
@@ -96,5 +91,8 @@ def unseal(provider_args, context, infile, outfile):
         manager = get_provider_by_name(name)
         plaintext = manager.read_blob(blob, **args)
 
-    checksum, key = derive_key(plaintext, salt, context)
+    derived_checksum, key = derive_key(plaintext, salt, context)
+    if derived_checksum != checksum:
+        raise InvalidKeyError
+
     _aepipe.unseal(key, infile, outfile)

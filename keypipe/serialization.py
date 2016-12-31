@@ -9,6 +9,16 @@ PROVIDER_HEADER_SIZE = struct.calcsize(PROVIDER_HEADER_FORMAT)
 MAGIC = b'AE|'
 VERSION = 1
 
+class InsufficientDataError(RuntimeError):
+    pass
+
+class UnrecognizedMagicError(RuntimeError):
+    pass
+
+class UnrecognizedVersionError(RuntimeError):
+    pass
+
+
 def _serialize_provider_header(name, blob):
     encoded_name = name.encode('ascii')
     lengths = struct.pack(PROVIDER_HEADER_FORMAT,
