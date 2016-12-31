@@ -1,21 +1,21 @@
 from contextlib import contextmanager
 
+import hashlib
+from hmac import new as _hmac
 import importlib
 import os
-import struct
 
 from contexter import Contexter
 
 from . import _aepipe
+from .serialization import serialize
+from .serialization import deserialize
 
 providers = dict(
     kms='keypipe.managers.kms',
     vault='keypipe.managers.vault',
     keyfile='keypipe.managers.keyfile',
 )
-
-MAGIC = b'AE|'
-VERSION = 1
 
 class InsufficientDataError(RuntimeError):
     pass
@@ -26,36 +26,18 @@ class UnrecognizedMagicError(RuntimeError):
 class UnrecognizedVersionError(RuntimeError):
     pass
 
-def get_header(name, blob):
-    encoded_name = name.encode('ascii')
-    total_len = 1 + len(name) + len(blob)
-    pack_format = '!3sBHB{}s'.format(len(encoded_name))
-    packed = struct.pack(pack_format,
-                         MAGIC,
-                         VERSION,
-                         total_len,
-                         len(encoded_name),
-                         encoded_name,
-                )
-    return packed + blob
+def hmac(key, data, func):
+    return _hmac(key, data, func).digest()
 
-def read_header(infile):
-    initial_input = infile.read(7)
-    if len(initial_input) != 7:
-        raise InsufficientDataError
-
-    d = struct.unpack('!3sBHB', initial_input)
-    got_magic, got_version, total_len, name_len = d
-    if got_magic != MAGIC:
-        raise UnrecognizedMagicError
-
-    if got_version != VERSION:
-        raise UnrecognizedVersionError
-
-    name_and_blob = infile.read(total_len - 1)
-    name = name_and_blob[:name_len].decode('ascii')
-    blob = name_and_blob[name_len:]
-    return name, blob
+def _hkdf_generator(ikm, salt, info):
+    # Using SHA-512 and truncating its output is explicitly endorsed by
+    # https://eprint.iacr.org/2010/264.pdf , pg. 27
+    # Appendix D, #4
+    prk = hmac(salt, ikm, func=hashlib.sha512)[:32]
+    t = b""
+    for i in range(0, 255):
+        t = hmac(prk, t + info + bytes([1+i]), hashlib.sha256)
+        yield t
 
 def get_provider_module(module_name):
     return importlib.import_module(module_name)
@@ -64,11 +46,34 @@ def get_provider_by_name(name):
     module_name = providers[name]
     return get_provider_module(module_name)
 
-def seal(provider_name, provider_args, in_fileno, out_fileno):
+def derive_key(ikm, salt, context):
+    generator = _hkdf_generator(ikm, salt, context)
+    key = next(generator)
+
+    # Hugo Krawczyk. "Cryptographic Extraction and Key Derivation: The HKDF
+    # Scheme" https://eprint.iacr.org/2010/264.pdf p.21
+    # explicitly endorses disclosing other output from the KDF:
+    #   "Second, if the leakage of an output from the KDF, in this case the
+    #   public IV, can compromise other (secret) keys output by the KDF,
+    #   then the scheme is fully broken; indeed, it is an essential requirement
+    #   that the leakage of one key produced by the KDF should not compromise
+    #   other such keys"
+    checksum = next(generator)
+
+    return checksum, key
+
+def seal(provider_name, provider_args, context, in_fileno, out_fileno):
     module = get_provider_by_name(provider_name)
-    (key, blob) = module.get_keypair(**provider_args)
-    header = get_header(provider_name, blob)
-    os.write(out_fileno, header)
+    (plaintext, blob) = module.get_keypair(**provider_args)
+
+    salt = os.urandom(64)
+    checksum, key = derive_key(plaintext, salt, context)
+
+    # The checksum serves only to identify whether the correct key has been
+    # derived. Most of the header could be garbage, but if we manage to produce
+    # a correct key, the checksum will match.
+    header = serialize(salt, checksum, { provider_name: blob })
+    out_fileno.write(header)
     _aepipe.seal(key, in_fileno, out_fileno)
 
 @contextmanager
@@ -81,12 +86,15 @@ def closing_fd(fd):
 class UnconfiguredProviderException(Exception):
     pass
 
-def unseal(provider_args, infile, outfile):
-    provider, blob = read_header(infile)
-    try:
-        args = provider_args[provider]
-    except KeyError:
-        raise UnconfiguredProviderException()
-    manager = get_provider_by_name(provider)
-    key = manager.read_blob(blob, **args)
+def unseal(provider_args, context, infile, outfile):
+    salt, checksum, providers = deserialize(infile)
+    for name, blob in providers:
+        if name not in provider_args:
+            continue
+
+        args = provider_args[name]
+        manager = get_provider_by_name(name)
+        plaintext = manager.read_blob(blob, **args)
+
+    checksum, key = derive_key(plaintext, salt, context)
     _aepipe.unseal(key, infile, outfile)

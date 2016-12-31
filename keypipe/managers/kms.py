@@ -22,8 +22,9 @@ def customize_parser(p):
     p.set_defaults(func=get_keypair)
 
 
-def get_keypair(cmk, region_name=None):
-    kms = boto3.client('kms', region_name)
+def get_keypair(cmk, region_name=None, profile_name=None):
+    session = boto3.session.Session(profile_name=profile_name, region_name=region_name)
+    kms = session.client('kms')
     key = kms.generate_data_key(
         KeyId=cmk,
         NumberOfBytes=32,
@@ -31,7 +32,7 @@ def get_keypair(cmk, region_name=None):
 
     return key['Plaintext'], key['CiphertextBlob']
 
-def read_blob(blob, cmk=None, region_name=None):
-    # cmk goes unused.
-    kms = boto3.client('kms', region_name)
+def read_blob(blob, cmk=None, region_name=None, profile_name=None):
+    session = boto3.session.Session(profile_name=profile_name, region_name=region_name)
+    kms = session.client('kms')
     return kms.decrypt(CiphertextBlob=blob)['Plaintext']
