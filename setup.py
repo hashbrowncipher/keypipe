@@ -26,4 +26,8 @@ setup(
             'keyunseal=keypipe.cli:unseal',
         ],
     ),
+    license='Apache',
+    classifiers=[
+        'License :: OSI Approved :: Apache Software License',
+    ],
 )
