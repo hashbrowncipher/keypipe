@@ -10,12 +10,6 @@ import traceback
 
 import keypipe
 
-providers = (
-    ('kms', 'keypipe.managers.kms'),
-    ('vault', 'keypipe.managers.vault'),
-    ('keyfile', 'keypipe.managers.keyfile'),
-)
-
 
 class InvalidMagicError(Exception):
     pass
@@ -26,9 +20,8 @@ class UnrecognizedVersionError(Exception):
     def __init__(self, version):
         self.version = version
 
+
 # there is seriously nothing in stdlib that composes two functions?
-
-
 def wrap(t):
     def decorator(fn):
         "Function decorator to transform a generator into a list"
@@ -38,18 +31,20 @@ def wrap(t):
         return wrapper
     return decorator
 
-
 @wrap(list)
 def get_providers():
     for name, module_name in providers:
         module = None
         exception = None
+        tagline = None
         try:
             module = importlib.import_module(module_name)
+            if hasattr(module, 'get_tagline'):
+                tagline = module.get_tagline()
         except Exception as e:
             exception = traceback.format_exc()
 
-        yield name, module, exception
+        yield name, module, exception, tagline
 
 
 def get_header(name, blob):
@@ -132,7 +127,8 @@ def read_key(argv):
 
     if not module:
         print(
-            "Trying to import the {} provider failed with this exception".format(provider))
+            "Trying to import the {} provider failed with this exception".format(provider
+        )
         print(indent(exception), file=sys.stderr)
         return None
 
@@ -144,30 +140,42 @@ def seal():
     keypipe.seal(key, 0, 1)
 
 
-def do_unseal_help():
+def get_split_providers():
     providers = get_providers()
 
     available_providers = [
-        name
-        for name, module, exception
+        (name, module, tagline)
+        for name, module, exception, tagline
         in providers
         if exception is None
     ]
-    print("Available key providers:", file=sys.stderr)
-    for name in available_providers:
-        print(name, file=sys.stderr)
 
     broken_providers = [
         (name, exception)
-        for name, module, exception
+        for name, module, exception, tagline
         in providers
         if exception is not None
     ]
 
-    if len(broken_providers) > 0:
+    return available_providers, broken_providers
+
+
+def do_unseal_help(available, broken):
+    if len(available) > 0:
+        print("Available key providers:", file=sys.stderr)
+        for name, _, tagline in available:
+            print(name, file=sys.stderr, end='')
+            if tagline is not None:
+                print(':\t{}'.format(tagline), file=sys.stderr)
+            else:
+                print(file=sys.stderr)
+    else:
+        print("No key providers loaded succesfully", file=sys.stderr)
+
+    if len(broken) > 0:
         print(file=sys.stderr)
         print("The following providers failed to load:")
-        for name, exception in broken_providers:
+        for name, exception in broken:
             print('{}:'.format(name), file=sys.stderr)
             print(indent(exception), file=sys.stderr)
 
@@ -203,7 +211,6 @@ def do_plugin_help(name):
         print(module.get_unseal_help())
     return 0
 
-
 def do_unseal():
     key = read_key(sys.argv[1:])
     if key is None:
@@ -211,27 +218,35 @@ def do_unseal():
 
     keypipe.unseal(key, 0, 1)
 
+def do_unseal_tty():
+    (available, broken) = get_split_providers()
+    parser = argparse.ArgumentParser(
+        description='Piped authenticated decryption with key management',
+        add_help=False)
+    parser.add_argument('--force', '-f', action='store_true',
+                        help='Forces unseal even when stdin is a tty')
+    parser.add_argument('--help', '-h', action='store', metavar='PROVIDER',
+                        help='Display help for a specific key provider',
+                        choices=[name for name, _, _ in available])
+
+    (known_args, known_unknowns) = parser.parse_known_args()
+
+    if len(known_unknowns) == 2 and known_unknowns[0].lower() == 'help':
+        return do_plugin_help(known_unknowns[1])
+
+    if known_args.force:
+        return do_unseal()
+
+    parser.print_help()
+    print(file=sys.stderr)
+    return do_unseal_help(available, broken)
+
 
 def unseal():
     if sys.stdin.isatty():
-        parser = argparse.ArgumentParser(
-            description='Piped authenticated decryption with key management',
-            usage='%(prog)s (--force|help [plugin])',
-            add_help=False)
-        parser.add_argument('--force', '-f', action='store_true',
-                            help='Forces unseal even when stdin is a tty')
-
-        (known_args, known_unknowns) = parser.parse_known_args()
-        if known_args.force:
-            return do_unseal()
-
-        if (len(known_unknowns) == 2 and
-                known_unknowns[0].lower() in ['help', '-h', '--help']):
-            return do_plugin_help(known_unknowns[1])
-
-        do_unseal_help()
+        return do_unseal_tty()
     else:
-        do_unseal()
+        return do_unseal()
 
 if __name__ == '__main__':
     sys.exit(unseal())
