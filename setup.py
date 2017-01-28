@@ -16,7 +16,7 @@ setup(
     version='0.0.1',
     author='Josh Snyder',
     author_email='josh@code406.com',
-    packages = ['keypipe'],
+    packages=find_packages(),
     setup_requires=["cffi>=1.0.0"],
     install_requires=install_requires,
     cffi_modules=['cffi_builders/lib.py:ffi'],
