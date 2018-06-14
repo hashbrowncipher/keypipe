@@ -6,6 +6,7 @@ from setuptools import find_packages
 install_requires = [
   "cffi>=1.0.0",
   "contexter>=0.1.3",
+  'plumbum',
 ]
 
 if sys.version_info.major < 3:
@@ -17,8 +18,17 @@ setup(
     author='Josh Snyder',
     author_email='josh@code406.com',
     packages=find_packages(),
-    setup_requires=["cffi>=1.0.0"],
+    setup_requires=[
+        'cffi>=1.0.0',
+        'pytest-runner',
+    ],
     install_requires=install_requires,
+    tests_require=[
+        'pytest',
+        # these seems to be optional runtime dependencies, but tests won't pass without them
+        'boto3',
+        'requests',
+    ],
     cffi_modules=['cffi_builders/lib.py:ffi'],
     entry_points=dict(
         console_scripts=[

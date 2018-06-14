@@ -127,7 +127,7 @@ def read_key(argv):
 
     if not module:
         print(
-            "Trying to import the {} provider failed with this exception".format(provider
+            "Trying to import the {} provider failed with this exception".format(provider)
         )
         print(indent(exception), file=sys.stderr)
         return None

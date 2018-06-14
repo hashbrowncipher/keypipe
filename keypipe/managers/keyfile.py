@@ -12,7 +12,7 @@ def customize_parser(parser):
 
 def get_keypair(args):
     key = os.urandom(32)
-    os.umask(umask | 0077)
+    os.umask(umask | 0o077)
     with open(args.file, 'wb') as f:
         f.write(key)
     return key, ''

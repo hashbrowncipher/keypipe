@@ -8,6 +8,7 @@ import os
 from contexter import Contexter
 
 from . import _aepipe
+from ._aepipe import AEError
 from .serialization import serialize
 from .serialization import deserialize
 
