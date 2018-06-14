@@ -145,9 +145,8 @@ int aepipe_unseal(unsigned char key[KEYSIZE], int in, int out) {
 	mprotect(plaintext, MESSAGE_SIZE, PROT_READ | PROT_WRITE);
 	mprotect(input, MESSAGE_SIZE + TAG_SIZE + 4, PROT_READ | PROT_WRITE);
 
-	EVP_CIPHER_CTX ctx;
-	EVP_CIPHER_CTX_init(&ctx);
-	CHECK(OPENSSL_WEIRD, 1, EVP_DecryptInit_ex(&ctx, EVP_aes_256_gcm(), NULL, key, NULL));
+	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+	CHECK(OPENSSL_WEIRD, 1, EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, key, NULL));
 
 	uint8_t version;
 	uint64_t counter;
@@ -173,8 +172,8 @@ int aepipe_unseal(unsigned char key[KEYSIZE], int in, int out) {
 		}
 
 		*iv_numeric = htobe64(counter);
-		CHECK(OPENSSL_WEIRD, 1, EVP_DecryptInit_ex(&ctx, NULL, NULL, NULL, iv));
-		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_SET_TAG, TAG_SIZE, input_ptr));
+		CHECK(OPENSSL_WEIRD, 1, EVP_DecryptInit_ex(ctx, NULL, NULL, NULL, iv));
+		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, TAG_SIZE, input_ptr));
 		input_ptr += TAG_SIZE;
 
 		input_ptr = input;
@@ -183,12 +182,12 @@ int aepipe_unseal(unsigned char key[KEYSIZE], int in, int out) {
 		}
 
 		int plen;
-		CHECK(OPENSSL_WEIRD, 1, EVP_DecryptUpdate(&ctx, plaintext, &plen, input_ptr, (int) len));
+		CHECK(OPENSSL_WEIRD, 1, EVP_DecryptUpdate(ctx, plaintext, &plen, input_ptr, (int) len));
 		input_ptr += len;
 
 		void * unused_buf = {0};
 		int32_t unused_len;
-		CHECK(CORRUPT_DATA, 1, EVP_DecryptFinal_ex(&ctx, unused_buf, &unused_len));
+		CHECK(CORRUPT_DATA, 1, EVP_DecryptFinal_ex(ctx, unused_buf, &unused_len));
 
 		counter++;
 		if(plen == 0) {
@@ -200,7 +199,7 @@ int aepipe_unseal(unsigned char key[KEYSIZE], int in, int out) {
 	};
 
 out:
-	EVP_CIPHER_CTX_cleanup(&ctx);
+	EVP_CIPHER_CTX_free(ctx);
 	munmap(s, alloc_size);
 
 	return ret;
@@ -245,10 +244,9 @@ int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, 
 	CHECK(NO_MEMORY, 0, mprotect(plaintext, MESSAGE_SIZE, PROT_READ | PROT_WRITE))
 	CHECK(NO_MEMORY, 0, mprotect(len, 4 + TAG_SIZE + MESSAGE_SIZE, PROT_READ | PROT_WRITE));
 
-	EVP_CIPHER_CTX ctx;
-	EVP_CIPHER_CTX_init(&ctx);
+	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 
-	CHECK(OPENSSL_WEIRD, 1, EVP_EncryptInit_ex(&ctx, EVP_aes_256_gcm(), NULL, key, NULL));
+	CHECK(OPENSSL_WEIRD, 1, EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, key, NULL));
 
 	uint8_t version = 1;
 	CHECK(OUTPUT_ERROR, 1, fdwrite(&version, sizeof(version), 1, out));
@@ -274,14 +272,14 @@ int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, 
 
 		*iv_numeric = htobe64(counter);
 		counter++;
-		CHECK(OPENSSL_WEIRD, 1, EVP_EncryptInit_ex(&ctx, NULL, NULL, NULL, iv));
+		CHECK(OPENSSL_WEIRD, 1, EVP_EncryptInit_ex(ctx, NULL, NULL, NULL, iv));
 
 		int32_t unused_len;
-		CHECK(OPENSSL_WEIRD, 1, EVP_EncryptUpdate(&ctx, ciphertext, &unused_len, plaintext, (int) plen));
+		CHECK(OPENSSL_WEIRD, 1, EVP_EncryptUpdate(ctx, ciphertext, &unused_len, plaintext, (int) plen));
 
 		void * unused_buf = {0};
-		CHECK(OPENSSL_WEIRD, 1, EVP_EncryptFinal_ex(&ctx, unused_buf, &unused_len));
-		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(&ctx, EVP_CTRL_GCM_GET_TAG, TAG_SIZE, tag));
+		CHECK(OPENSSL_WEIRD, 1, EVP_EncryptFinal_ex(ctx, unused_buf, &unused_len));
+		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, TAG_SIZE, tag));
 
 		*len = htonl((uint32_t) plen);
 		CHECK(OUTPUT_ERROR, 1, fdwrite(len, HEADER_SIZE + plen, 1, out));
@@ -293,7 +291,7 @@ int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, 
 	}
 
 out:
-	EVP_CIPHER_CTX_cleanup(&ctx);
+	EVP_CIPHER_CTX_free(ctx);
 	aepipe_ctx->offset = counter;
 	munmap(s, alloc_size);
 	__sync_lock_release(&aepipe_ctx->flag);
