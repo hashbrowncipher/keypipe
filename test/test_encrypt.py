@@ -1,4 +1,4 @@
-from keypipe import seal
+from keypipe._aepipe import seal
 
 from test.helpers import *
 
@@ -11,7 +11,8 @@ def test_multiblock():
     with aepipe_ctx(docs_key, buf, seal) as p:
         for i in range(128):
             os.write(p, b'\x00' * 8192)
-    open('hi', 'wb').write(buf.getvalue())
+    # instead of following line there should be some check, propably?
+    #open('hi', 'wb').write(buf.getvalue())
 
 def test_gcm13():
     expected = b'\x01' + b'\x00' * 12 + uh('530f8afbc74536b9a963b4f1c4cb738b')
