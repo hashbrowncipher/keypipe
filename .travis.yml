@@ -6,11 +6,13 @@ env:
 language: python
 matrix:
   include:
-  - python: "2.7"
-    env: ENVLIST="py27"
-  - python: "3.5"
-    env: ENVLIST="py35"
-  - python: "3.5"
+  - python: "3.6"
+    env: ENVLIST="py36"
+  - python: "3.7"
+    env: ENVLIST="py37"
+  - python: "3.8"
+    env: ENVLIST="py38"
+  - python: "3.7"
     env: MAKE="make"
 
 addons:
