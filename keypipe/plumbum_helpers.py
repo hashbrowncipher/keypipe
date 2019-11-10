@@ -1,21 +1,22 @@
 from __future__ import absolute_import
 
-from os import O_CLOEXEC
-from os import pipe2
+import functools
 import io
 import os
-
-from six import reraise
+import sys
+from os import O_CLOEXEC
+from os import pipe2
 from subprocess import PIPE
 from threading import Thread
-import functools
-import sys
 
 from plumbum.commands import BaseCommand
 from plumbum.machines.base import PopenAddons
+from six import reraise
+
 
 def get_thread(func, args=None, kwargs=None):
     return Thread(target=func, args=args, kwargs=kwargs)
+
 
 class PopenedThread(Thread, PopenAddons):
     def wait(self):
@@ -26,8 +27,9 @@ class PopenedThread(Thread, PopenAddons):
         self.returncode = 0
         return self.returncode
 
+
 class ThreadCommand(BaseCommand):
-    __slots__ = ['_func']
+    __slots__ = ["_func"]
 
     @staticmethod
     def _wrapper(func, stdin, stdout, exception):
@@ -46,31 +48,33 @@ class ThreadCommand(BaseCommand):
         self._func = func
 
     def popen(self, args=(), **kwargs):
-        bufsize = kwargs.get('bufsize', -1)
+        bufsize = kwargs.get("bufsize", -1)
 
-        stdin = kwargs.get('stdin', sys.stdin)
+        stdin = kwargs.get("stdin", sys.stdin)
         stdin.close = close
         exposed_stdin = None
         if stdin == PIPE:
             (r, w) = pipe2(O_CLOEXEC)
 
-            stdin = io.open(r, 'rb', bufsize)
-            exposed_stdin = io.open(w, 'wb', bufsize)
+            stdin = io.open(r, "rb", bufsize)
+            exposed_stdin = io.open(w, "wb", bufsize)
 
-        stdout = kwargs.get('stdout', sys.stdout)
+        stdout = kwargs.get("stdout", sys.stdout)
         exposed_stdout = None
         if stdout == PIPE:
             (r, w) = pipe2(O_CLOEXEC)
 
             stdout = w
-            exposed_stdout = io.open(r, 'rb', bufsize)
+            exposed_stdout = io.open(r, "rb", bufsize)
         else:
             stdout = os.dup(stdout)
 
-        stdout = io.open(stdout, 'wb', bufsize)
+        stdout = io.open(stdout, "wb", bufsize)
 
         exception = [None]
-        t = PopenedThread(target=self._wrapper, args=(self._func, stdin, stdout, exception))
+        t = PopenedThread(
+            target=self._wrapper, args=(self._func, stdin, stdout, exception)
+        )
         t.stdin = exposed_stdin
         t.stdout = exposed_stdout
         t.stderr = None
@@ -81,7 +85,8 @@ class ThreadCommand(BaseCommand):
 
 
 class PipelineToThread(BaseCommand):
-    __slots__ = ['_cmd', '_func']
+    __slots__ = ["_cmd", "_func"]
+
     def __init__(self, cmd, func):
         self._cmd = cmd
         self._func = func
@@ -95,8 +100,8 @@ class PipelineToThread(BaseCommand):
 
     def popen(self, args=(), **kwargs):
         kwargs = kwargs.copy()
-        thread_stdout = kwargs.get('stdout', sys.stdout)
-        kwargs['stdout'] = PIPE
+        thread_stdout = kwargs.get("stdout", sys.stdout)
+        kwargs["stdout"] = PIPE
 
         p = self._cmd.popen(bufsize=0, **kwargs)
         thread_stdin = p.stdout
@@ -105,6 +110,7 @@ class PipelineToThread(BaseCommand):
         # re-raise in the main thread. We'll also close the subprocess's
         # stdout when the thread exits.
         p._thread_exception = None
+
         @functools.wraps(self._func)
         def func(*args, **kwargs):
             try:
@@ -123,7 +129,7 @@ class PipelineToThread(BaseCommand):
             (p2cread, p2cwrite) = pipe2(O_CLOEXEC)
 
             # expose the thread's stdout on the Popen object
-            p.stdout = io.open(p2cread, 'rb')
+            p.stdout = io.open(p2cread, "rb")
             thread_stdout = p2cwrite
         else:
             thread_stdout = os.dup(thread_stdout.fileno())
@@ -132,20 +138,23 @@ class PipelineToThread(BaseCommand):
             # that's not its job.
             p.stdout = None
 
-        thread_stdout = io.open(thread_stdout, 'wb')
+        thread_stdout = io.open(thread_stdout, "wb")
 
         t = get_thread(func, args=(thread_stdin, thread_stdout))
 
         original_wait = p.wait
+
         def wait(*args, **kwargs):
             code = original_wait(*args, **kwargs)
             t.join()
             if p._thread_exception:
                 reraise(*p._thread_exception)
             return code
+
         p.wait = wait
 
         t.start()
         return p
+
 
 BaseCommand.__truediv__ = lambda s, o: PipelineToThread(s, o)

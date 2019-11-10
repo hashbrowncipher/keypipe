@@ -16,7 +16,6 @@ class InvalidMagicError(Exception):
 
 
 class UnrecognizedVersionError(Exception):
-
     def __init__(self, version):
         self.version = version
 
@@ -25,11 +24,15 @@ class UnrecognizedVersionError(Exception):
 def wrap(t):
     def decorator(fn):
         "Function decorator to transform a generator into a list"
+
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             return t(fn(*args, **kwargs))
+
         return wrapper
+
     return decorator
+
 
 @wrap(list)
 def get_providers():
@@ -39,7 +42,7 @@ def get_providers():
         tagline = None
         try:
             module = importlib.import_module(module_name)
-            if hasattr(module, 'get_tagline'):
+            if hasattr(module, "get_tagline"):
                 tagline = module.get_tagline()
         except Exception as e:
             exception = traceback.format_exc()
@@ -48,37 +51,31 @@ def get_providers():
 
 
 def get_header(name, blob):
-    magic = 'AE|'
+    magic = "AE|"
     version = 1
     total_length = 1 + len(name) + len(blob)
-    pack_format = '!3sBHB{}s'.format(len(name))
-    packed = struct.pack(pack_format,
-                         magic,
-                         version,
-                         total_length,
-                         len(name),
-                         name,
-                         )
+    pack_format = "!3sBHB{}s".format(len(name))
+    packed = struct.pack(pack_format, magic, version, total_length, len(name), name)
     return packed + blob
 
 
 def indent(s):
-    return '  ' + s.replace('\n', '\n  ').rstrip()
+    return "  " + s.replace("\n", "\n  ").rstrip()
 
 
 def write_blob():
     parser = argparse.ArgumentParser(
-        description='Piped authenticated encryption with key management')
+        description="Piped authenticated encryption with key management"
+    )
     plugin_parsers = parser.add_subparsers(
-        title='key_provider',
-        help='provider to use for key management',
+        title="key_provider", help="provider to use for key management"
     )
     providers = get_providers()
     for (name, module, exception) in providers:
         if module:
             got_args = True
 
-            get_parser_args = getattr(module, 'get_parser_args', None)
+            get_parser_args = getattr(module, "get_parser_args", None)
             if get_parser_args is not None:
                 try:
                     args, kwargs = get_parser_args()
@@ -104,9 +101,9 @@ def write_blob():
 
 def read_header(fileno):
     pre_header = os.read(fileno, 6)
-    magic, version, next_len = struct.unpack('!3sBH', pre_header)
+    magic, version, next_len = struct.unpack("!3sBH", pre_header)
 
-    if magic != 'AE|':
+    if magic != "AE|":
         raise InvalidMagicError()
 
     if version != 1:
@@ -115,8 +112,8 @@ def read_header(fileno):
     header = os.read(fileno, next_len)
     plugin_len = ord(header[0])
 
-    plugin = header[1:plugin_len + 1]
-    blob = header[plugin_len + 1:]
+    plugin = header[1 : plugin_len + 1]
+    blob = header[plugin_len + 1 :]
     return (plugin, blob)
 
 
@@ -127,7 +124,9 @@ def read_key(argv):
 
     if not module:
         print(
-            "Trying to import the {} provider failed with this exception".format(provider)
+            "Trying to import the {} provider failed with this exception".format(
+                provider
+            )
         )
         print(indent(exception), file=sys.stderr)
         return None
@@ -145,15 +144,13 @@ def get_split_providers():
 
     available_providers = [
         (name, module, tagline)
-        for name, module, exception, tagline
-        in providers
+        for name, module, exception, tagline in providers
         if exception is None
     ]
 
     broken_providers = [
         (name, exception)
-        for name, module, exception, tagline
-        in providers
+        for name, module, exception, tagline in providers
         if exception is not None
     ]
 
@@ -164,9 +161,9 @@ def do_unseal_help(available, broken):
     if len(available) > 0:
         print("Available key providers:", file=sys.stderr)
         for name, _, tagline in available:
-            print(name, file=sys.stderr, end='')
+            print(name, file=sys.stderr, end="")
             if tagline is not None:
-                print(':\t{}'.format(tagline), file=sys.stderr)
+                print(":\t{}".format(tagline), file=sys.stderr)
             else:
                 print(file=sys.stderr)
     else:
@@ -176,15 +173,13 @@ def do_unseal_help(available, broken):
         print(file=sys.stderr)
         print("The following providers failed to load:")
         for name, exception in broken:
-            print('{}:'.format(name), file=sys.stderr)
+            print("{}:".format(name), file=sys.stderr)
             print(indent(exception), file=sys.stderr)
 
 
 def get_provider(name):
     return dict(
-        (name, (module, exception))
-        for (name, module, exception)
-        in get_providers()
+        (name, (module, exception)) for (name, module, exception) in get_providers()
     ).get(name)
 
 
@@ -196,20 +191,27 @@ def do_plugin_help(name):
 
     (module, exception) = provider
     if exception is not None:
-        print("The {} key provider failed to load, with the following exception:".format(
-            name), file=sys.stderr)
+        print(
+            "The {} key provider failed to load, with the following exception:".format(
+                name
+            ),
+            file=sys.stderr,
+        )
         print(indent(exception), file=sys.stderr)
         return 1
 
-    get_unseal_help = getattr(module, 'get_unseal_help', None)
+    get_unseal_help = getattr(module, "get_unseal_help", None)
     if get_unseal_help is None:
-        print('The {} unseal key provider requires no configuration'.format(
-            name), file=sys.stderr)
+        print(
+            "The {} unseal key provider requires no configuration".format(name),
+            file=sys.stderr,
+        )
     else:
-        print('Help for the {} unseal key provider:'.format(name), file=sys.stderr)
+        print("Help for the {} unseal key provider:".format(name), file=sys.stderr)
         print()
         print(module.get_unseal_help())
     return 0
+
 
 def do_unseal():
     key = read_key(sys.argv[1:])
@@ -218,20 +220,30 @@ def do_unseal():
 
     keypipe.unseal(key, 0, 1)
 
+
 def do_unseal_tty():
     (available, broken) = get_split_providers()
     parser = argparse.ArgumentParser(
-        description='Piped authenticated decryption with key management',
-        add_help=False)
-    parser.add_argument('--force', '-f', action='store_true',
-                        help='Forces unseal even when stdin is a tty')
-    parser.add_argument('--help', '-h', action='store', metavar='PROVIDER',
-                        help='Display help for a specific key provider',
-                        choices=[name for name, _, _ in available])
+        description="Piped authenticated decryption with key management", add_help=False
+    )
+    parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Forces unseal even when stdin is a tty",
+    )
+    parser.add_argument(
+        "--help",
+        "-h",
+        action="store",
+        metavar="PROVIDER",
+        help="Display help for a specific key provider",
+        choices=[name for name, _, _ in available],
+    )
 
     (known_args, known_unknowns) = parser.parse_known_args()
 
-    if len(known_unknowns) == 2 and known_unknowns[0].lower() == 'help':
+    if len(known_unknowns) == 2 and known_unknowns[0].lower() == "help":
         return do_plugin_help(known_unknowns[1])
 
     if known_args.force:
@@ -248,5 +260,6 @@ def unseal():
     else:
         return do_unseal()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     sys.exit(unseal())
