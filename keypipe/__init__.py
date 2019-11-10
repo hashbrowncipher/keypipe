@@ -1,28 +1,28 @@
-from contextlib import contextmanager
-
 import hashlib
-from hmac import new as _hmac
 import importlib
 import os
-
-from contexter import Contexter
+from contextlib import contextmanager
+from hmac import new as _hmac
 
 from . import _aepipe
 from ._aepipe import AEError
-from .serialization import serialize
 from .serialization import deserialize
+from .serialization import serialize
 
 providers = dict(
-    kms='keypipe.managers.kms',
-    vault='keypipe.managers.vault',
-    keyfile='keypipe.managers.keyfile',
+    kms="keypipe.managers.kms",
+    vault="keypipe.managers.vault",
+    keyfile="keypipe.managers.keyfile",
 )
+
 
 class InvalidKeyError(RuntimeError):
     pass
 
+
 def hmac(key, data, func):
     return _hmac(key, data, func).digest()
+
 
 def _hkdf_generator(ikm, salt, info):
     # Using SHA-512 and truncating its output is explicitly endorsed by
@@ -31,15 +31,18 @@ def _hkdf_generator(ikm, salt, info):
     prk = hmac(salt, ikm, func=hashlib.sha512)[:32]
     t = b""
     for i in range(0, 255):
-        t = hmac(prk, t + info + bytes([1+i]), hashlib.sha256)
+        t = hmac(prk, t + info + bytes([1 + i]), hashlib.sha256)
         yield t
+
 
 def get_provider_module(module_name):
     return importlib.import_module(module_name)
 
+
 def get_provider_by_name(name):
     module_name = providers[name]
     return get_provider_module(module_name)
+
 
 def derive_key(ikm, salt, context):
     generator = _hkdf_generator(ikm, salt, context)
@@ -57,6 +60,7 @@ def derive_key(ikm, salt, context):
 
     return checksum, key
 
+
 def seal(provider_name, provider_args, context, in_fileno, out_fileno):
     module = get_provider_by_name(provider_name)
     (plaintext, blob) = module.get_keypair(**provider_args)
@@ -67,10 +71,11 @@ def seal(provider_name, provider_args, context, in_fileno, out_fileno):
     # The checksum serves only to identify whether the correct key has been
     # derived. Most of the header could be garbage, but if we manage to produce
     # a correct key, the checksum will match.
-    header = serialize(salt, checksum, { provider_name: blob })
+    header = serialize(salt, checksum, {provider_name: blob})
     out_fileno.write(header)
     out_fileno.flush()
     _aepipe.seal(key, in_fileno, out_fileno)
+
 
 @contextmanager
 def closing_fd(fd):
@@ -79,8 +84,10 @@ def closing_fd(fd):
     finally:
         os.close(fd)
 
+
 class UnconfiguredProviderException(Exception):
     pass
+
 
 def unseal(provider_args, context, infile, outfile):
     salt, checksum, providers = deserialize(infile)

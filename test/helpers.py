@@ -1,15 +1,18 @@
+import binascii
+import hashlib
+import os
+import struct
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from io import BytesIO
-import binascii
-import os
 
 from contexter import Contexter
 
 from keypipe._aepipe import closing_fd
 
 uh = binascii.unhexlify
-docs_key = uh('bdccdb944d9f1f560d66a5615bd4c9e93ae84184eda521643d7f6c88e5cf6908')
+docs_key = uh("bdccdb944d9f1f560d66a5615bd4c9e93ae84184eda521643d7f6c88e5cf6908")
+
 
 def drain_into(pipe, to):
     while True:
@@ -18,11 +21,12 @@ def drain_into(pipe, to):
             break
         to.write(d)
 
+
 @contextmanager
 def aepipe_ctx(key, buf, op):
     with Contexter() as ctx:
         executor = ctx << ThreadPoolExecutor(max_workers=2)
-        
+
         (input_r, input_w) = os.pipe()
         (output_r, output_w) = os.pipe()
 
@@ -42,6 +46,7 @@ def aepipe_ctx(key, buf, op):
         output_closer.close()
         output_f.result()
 
+
 def do_aepipe(key, in_, op):
     buf = BytesIO()
     with aepipe_ctx(key, buf, op) as p:
@@ -49,3 +54,9 @@ def do_aepipe(key, in_, op):
     return buf.getvalue()
 
 
+def as_int(buf):
+    return struct.unpack("!I", buf)[0]
+
+
+def sha256(buf):
+    return hashlib.sha256(buf).hexdigest()
