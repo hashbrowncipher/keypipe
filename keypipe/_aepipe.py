@@ -4,8 +4,6 @@ from contextlib import closing
 from contextlib import contextmanager
 from errno import EBADF
 from errno import EPERM
-from os.path import dirname
-from os.path import join
 from threading import Lock
 
 from contexter import Contexter
