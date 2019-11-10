@@ -1,4 +1,6 @@
-from test.helpers import *
+from test.helpers import do_aepipe
+from test.helpers import docs_key
+from test.helpers import uh
 
 import pytest
 
@@ -19,7 +21,6 @@ def test_empty():
 
 
 def test_corrupted_empty():
-    key = uh("bdccdb944d9f1f560d66a5615bd4c9e93ae84184eda521643d7f6c88e5cf6908")
     in_ = b"\x01" + b"\x00" * 12 + uh("763c62df413000674199240567321ec0")
     expect_exception(docs_key, in_, b"")
 
