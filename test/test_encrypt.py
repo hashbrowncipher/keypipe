@@ -1,6 +1,6 @@
-from keypipe._aepipe import seal
-
 from test.helpers import *
+
+from keypipe._aepipe import seal
 
 
 def test_empty():

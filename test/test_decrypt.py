@@ -1,8 +1,10 @@
+from test.helpers import *
+
 import pytest
 
-from keypipe._aepipe import _unseal_unchecked, AEError, unseal
-
-from test.helpers import *
+from keypipe._aepipe import _unseal_unchecked
+from keypipe._aepipe import AEError
+from keypipe._aepipe import unseal
 
 
 def expect_exception(key, in_, out):
