@@ -1,8 +1,10 @@
 import os
 from io import BytesIO
 from test.helpers import aepipe_ctx
+from test.helpers import as_int
 from test.helpers import do_aepipe
 from test.helpers import docs_key
+from test.helpers import sha256
 from test.helpers import uh
 
 from keypipe._aepipe import seal
@@ -16,11 +18,39 @@ def test_empty():
 def test_multiblock():
     buf = BytesIO()
     with aepipe_ctx(docs_key, buf, seal) as p:
-        for i in range(128):
+        for i in range(129):
             os.write(p, b"\x00" * 8192)
 
     # instead of following line there should be some check, propably?
-    # open('hi', 'wb').write(buf.getvalue())
+    output_value = buf.getvalue()
+
+    # version
+    assert output_value[0] == 1
+
+    # iv
+    assert output_value[1:9] == b"\x00" * 8
+
+    assert as_int(output_value[9:13]) == 1_048_576
+    start = 13
+    start += 16
+    start += 1_048_576
+
+    assert as_int(output_value[start : start + 4]) == 8192
+
+    start += 4
+    start += 16
+    start += 8192
+
+    assert as_int(output_value[start : start + 4]) == 0
+
+    start += 4
+    start += 16
+
+    assert len(output_value) == start
+    assert (
+        sha256(output_value)
+        == "b76e03b3f3e5f59a5f15a13bd87c1767358bb9787546415a3b0a78ea450d6c69"
+    )
 
 
 def test_gcm13():

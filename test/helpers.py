@@ -1,5 +1,7 @@
 import binascii
+import hashlib
 import os
+import struct
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from io import BytesIO
@@ -50,3 +52,11 @@ def do_aepipe(key, in_, op):
     with aepipe_ctx(key, buf, op) as p:
         os.write(p, in_)
     return buf.getvalue()
+
+
+def as_int(buf):
+    return struct.unpack("!I", buf)[0]
+
+
+def sha256(buf):
+    return hashlib.sha256(buf).hexdigest()
