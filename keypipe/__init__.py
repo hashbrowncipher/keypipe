@@ -5,12 +5,12 @@ from hmac import new as _hmac
 import importlib
 import os
 
-from contexter import Contexter
-
 from . import _aepipe
 from ._aepipe import AEError
 from .serialization import serialize
 from .serialization import deserialize
+
+AEError = _aepipe.AEError
 
 providers = dict(
     kms='keypipe.managers.kms',
