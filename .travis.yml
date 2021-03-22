@@ -19,7 +19,6 @@ addons:
   apt:
     packages:
     - libssl-dev
-    - python3.5
 
 install: "pip install tox"
 script: "./test.sh $ENVLIST"
