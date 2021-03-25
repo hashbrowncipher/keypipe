@@ -173,7 +173,7 @@ int aepipe_unseal(unsigned char key[KEYSIZE], int in, int out) {
 
 		*iv_numeric = htobe64(counter);
 		CHECK(OPENSSL_WEIRD, 1, EVP_DecryptInit_ex(ctx, NULL, NULL, NULL, iv));
-		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, TAG_SIZE, input_ptr));
+		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, TAG_SIZE, input_ptr));
 		input_ptr += TAG_SIZE;
 
 		input_ptr = input;
@@ -279,7 +279,7 @@ int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, 
 
 		void * unused_buf = {0};
 		CHECK(OPENSSL_WEIRD, 1, EVP_EncryptFinal_ex(ctx, unused_buf, &unused_len));
-		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, TAG_SIZE, tag));
+		CHECK(OPENSSL_WEIRD, 1, EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, TAG_SIZE, tag));
 
 		*len = htonl((uint32_t) plen);
 		CHECK(OUTPUT_ERROR, 1, fdwrite(len, HEADER_SIZE + plen, 1, out));
