@@ -146,7 +146,7 @@ int aepipe_unseal(unsigned char key[KEYSIZE], int in, int out) {
 	mprotect(input, MESSAGE_SIZE + TAG_SIZE + 4, PROT_READ | PROT_WRITE);
 
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-	CHECK(OPENSSL_WEIRD, 1, EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, key, NULL));
+	CHECK(OPENSSL_WEIRD, 1, EVP_DecryptInit_ex(ctx, EVP_chacha20_poly1305(), NULL, key, NULL));
 
 	uint8_t version;
 	uint64_t counter;
@@ -246,7 +246,7 @@ int aepipe_seal(unsigned char key[KEYSIZE], struct aepipe_context * aepipe_ctx, 
 	CHECK(NO_MEMORY, 0, mprotect(plaintext, MESSAGE_SIZE, PROT_READ | PROT_WRITE))
 	CHECK(NO_MEMORY, 0, mprotect(len, 4 + TAG_SIZE + MESSAGE_SIZE, PROT_READ | PROT_WRITE));
 
-	CHECK(OPENSSL_WEIRD, 1, EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, key, NULL));
+	CHECK(OPENSSL_WEIRD, 1, EVP_EncryptInit_ex(ctx, EVP_chacha20_poly1305(), NULL, key, NULL));
 
 	uint8_t version = 1;
 	CHECK(OUTPUT_ERROR, 1, fdwrite(&version, sizeof(version), 1, out));
